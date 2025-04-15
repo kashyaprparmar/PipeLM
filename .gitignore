@@ -1,0 +1,73 @@
+# === Python cache and artifacts ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+pip-wheel-metadata/
+
+# === Virtual environments ===
+.venv/
+venv/
+env/
+ENV/
+
+# === Environment secrets ===
+.env
+.env.*
+
+# === Hugging Face model files ===
+model/
+*.safetensors
+*.bin
+*.onnx
+*.onnx_data
+*.pth
+*.ckpt
+
+# === Logs & metadata ===
+*.log
+*.jsonl
+*.tmp
+*.cache/
+*.tqdm_cache/
+
+# === Jupyter/Notebook ===
+.ipynb_checkpoints/
+
+# === System files ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === IDE/editor configs ===
+.vscode/
+.idea/
+*.swp
+*.bak
+
+# === Uvicorn server reloads ===
+*.pid
+*.db
+
+# === PyInstaller ===
+*.spec
+
+# === Coverage / testing ===
+htmlcov/
+.coverage
+coverage.xml
+.cache
+pytest_cache/
+nosetests.xml
+test-results.xml
+.tox/
+
+# === MyPy / Type checking ===
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
