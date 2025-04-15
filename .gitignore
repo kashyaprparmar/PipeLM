@@ -22,6 +22,7 @@ ENV/
 # === Hugging Face model files ===
 model/
 models/
+/models/
 *.safetensors
 *.bin
 *.onnx
