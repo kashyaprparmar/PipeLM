@@ -74,6 +74,7 @@ test-results.xml
 .pyre/
 .pytype/
 
+.models/
 models/
 /models/
 /.pipelm/
