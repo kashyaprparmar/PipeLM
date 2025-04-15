@@ -1,4 +1,4 @@
-# PipeLM 🚀
+# PipeLM
 
 *A lightweight, modular tool for running Large Language Models (LLMs) from Hugging Face.*
 
@@ -6,7 +6,7 @@ PipeLM provides an intuitive CLI interface for interactive chat and a robust Fas
 
 ---
 
-## ✨ Overview
+## Overview
 
 PipeLM simplifies interaction with AI models, allowing you to:
 
@@ -18,28 +18,28 @@ PipeLM simplifies interaction with AI models, allowing you to:
 
 ---
 
-## 🌟 Features
+## Features
 
-- 🖥️ **Interactive CLI Chat**: Engage directly from your terminal.
-- 🚀 **FastAPI Server**: REST APIs with built-in health monitoring.
-- 🧩 **Efficient Model Management**: Download and manage models easily.
-- 📦 **Docker Support**: Containerize your models for better isolation.
-- ⚡ **GPU Acceleration**: Automatically utilize available GPUs.
-- 🎯 **Model Quantization**: Reduce memory usage (4-bit and 8-bit).
-- 📚 **Conversation History**: Persistent chat context.
-- 💡 **Rich Terminal Interface**: Enhanced CLI with markdown rendering.
-- ✅ **Robust Error Handling**: Graceful handling of issues.
+- **Interactive CLI Chat**: Engage directly from your terminal.
+- **FastAPI Server**: REST APIs with built-in health monitoring.
+- **Efficient Model Management**: Download and manage models easily.
+- **Docker Support**: Containerize your models for better isolation.
+- **GPU Acceleration**: Automatically utilize available GPUs.
+- **Model Quantization**: Reduce memory usage (4-bit and 8-bit).
+- **Conversation History**: Persistent chat context.
+- **Rich Terminal Interface**: Enhanced CLI with markdown rendering.
+- **Robust Error Handling**: Graceful handling of issues.
 
 ---
 
-## 🛠️ Installation
+## Installation
 
-### 📦 From PyPI (Recommended)
+### 📦 From PyPI 
 ```bash
 pip install pipelm
 ```
 
-### 💻 From Source
+### 💻 From Source (Recommended)
 ```bash
 git clone https://github.com/yourusername/pipelm.git
 cd pipelm
@@ -58,19 +58,19 @@ docker run -p 8080:8080 -v pipelm_data:/root/.pipelm -e HF_TOKEN=your_token -e M
 
 ---
 
-## 🚦 Usage
+## Usage
 
-### 📥 Download a Model
+### Download a Model
 ```bash
 pipelm download mistralai/Mistral-7B-Instruct-v0.2
 ```
 
-### 📋 List Downloaded Models
+### List Downloaded Models
 ```bash
 pipelm list
 ```
 
-### 💬 Interactive Chat
+### Interactive Chat
 ```bash
 pipelm chat mistralai/Mistral-7B-Instruct-v0.2
 
@@ -102,7 +102,7 @@ docker-compose up -d pipelm
 
 ## 📡 API Endpoints
 
-### 🛠️ Quick Commands
+### Quick Commands
 
 #### Check Server Health:
 ```bash
@@ -160,7 +160,7 @@ Response:
 
 ---
 
-## 🎯 Chat Commands
+## Chat Commands
 
 - `/exit` or `/quit` – Exit chat
 - `/clear` – Clear conversation history
@@ -168,7 +168,7 @@ Response:
 
 ---
 
-## ⚙️ Environment Variables
+## Environment Variables
 
 - `HF_TOKEN`: Your Hugging Face token (required).
 - `MODEL_DIR`: Local model directory.
@@ -196,7 +196,7 @@ pipelm/
 
 ---
 
-## ✅ Requirements
+## Requirements
 
 - Python 3.8+
 - Torch (GPU support recommended)
@@ -205,35 +205,53 @@ pipelm/
 
 ---
 
-## 🚩 Troubleshooting
+## Troubleshooting
 
 ### Model Download Issues
-- Verify Hugging Face token.
-- Check network connectivity.
+
+If you encounter issues downloading models:
+
+1. Check your Hugging Face token:
+   * Create or verify your token at https://huggingface.co/settings/tokens
+   * Set it in your environment as `export HF_TOKEN=your_token_here`
+   * Or store it in `.env` file as `HF_TOKEN=your_token_here`
+2. Network issues:
+   * Check your internet connection
+   * Verify you have permissions to download the model
 
 ### Server Startup Issues
-- Change default port if already in use.
-- Ensure dependencies are installed.
+
+If the server fails to start:
+
+1. Check if another process is using port 8080:
+   * Use a different port: `pipelm server mistralai/Mistral-7B-Instruct-v0.2 --port 8081`
+2. Verify Python dependencies:
+   * Ensure all required packages are installed: `pip install -r requirements.txt`
 
 ### Memory Issues
-- Use smaller models or quantization.
 
----
+If you encounter memory errors:
+
+1. Choose a smaller model
+2. Try quantization: `pipelm chat mistralai/Mistral-7B-Instruct-v0.2 --quantize 4bit`
+3. Ensure you have enough RAM and GPU VRAM if using CUDA
 
 ## 💽 Model Storage
 
-- Linux/Mac: `~/.pipelm/models/`
-- Windows: `%LOCALAPPDATA%\pipelm\models\`
-- Docker: `/root/.pipelm/models/`
+Models are downloaded to:
+- Linux/Mac: `~/.pipelm/models/[sanitized_model_name]`
+- Windows: `C:\Users\[username]\AppData\Local\pipelm\pipelm\models\[sanitized_model_name]`
+
+When using Docker, models are stored in `/root/.pipelm/models/` in the container, typically mapped to a persistent volume.
 
 ---
 
-## 🙌 Contributing
+## Contributing
 
 Contributions are welcome! Submit a Pull Request.
 
 ---
 
-## 📜 License
+## License
 
 MIT License. See `LICENSE` for details.
