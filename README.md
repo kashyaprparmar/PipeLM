@@ -239,7 +239,7 @@ If you encounter memory errors:
 ## 💽 Model Storage
 
 Models are downloaded to:
-- Linux/Mac: `~/.pipelm/models/[sanitized_model_name]`
+- Linux/Mac: `~/.pipelm/models/[sanitized_model_name]` OR `.local/share/pipelm/models` OR `/home/kashyap/snap/code/190/.local/share/pipelm/models`
 - Windows: `C:\Users\[username]\AppData\Local\pipelm\pipelm\models\[sanitized_model_name]`
 
 When using Docker, models are stored in `/root/.pipelm/models/` in the container, typically mapped to a persistent volume.
