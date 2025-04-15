@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 PipeLM: Terminal-based chatting with Hugging Face models.
 """

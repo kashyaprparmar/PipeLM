@@ -148,7 +148,6 @@ pipelm/
 ├── pipelm.py      # Main script with CLI commands
 ├── app.py         # FastAPI server implementation
 ├── setup.py       # Package configuration for installation
-├── requirements.txt
 ├── .gitignore
 └── LICENSE
 ```
