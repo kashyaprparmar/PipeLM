@@ -1,202 +1,239 @@
-# PipeLM
+# PipeLM 🚀
 
-A lightweight API server and command-based interface for chatting with Hugging Face models.
+*A lightweight, modular tool for running Large Language Models (LLMs) from Hugging Face.*
 
-## Overview
+PipeLM provides an intuitive CLI interface for interactive chat and a robust FastAPI server to integrate LLMs seamlessly into your applications.
 
-PipeLM provides a simple HTTP API server and interactive terminal interface for running inference with local language models. It creates a standardized way to interact with AI models, making it easy to:
+---
 
-- Download and manage models from Hugging Face
-- Serve models through a consistent REST API
-- Test prompts in an interactive chat interface
-- Maintain conversation history
-- Integrate language models into your applications
-- Switch between different models with minimal code changes
+## ✨ Overview
 
-## Features
+PipeLM simplifies interaction with AI models, allowing you to:
 
-- 🚀 FastAPI-based inference server with health monitoring
-- 💬 Rich interactive terminal interface for chatting
-- 🔄 Conversation history support
-- 📦 Easy model download and management
-- 📁 Model-specific directories to avoid conflicts
-- 🧩 Support for various model backends 
-- 🛠️ Easy configuration via CLI
-- ⚠️ Robust error handling
+- 📥 **Download and manage** models from Hugging Face.
+- 🌐 **Serve models** through a standardized REST API.
+- 💬 **Test prompts** via an interactive chat interface.
+- 📜 **Maintain conversation history**.
+- 🔄 **Easily switch models** with minimal configuration changes.
 
-## Installation
+---
 
-### Method 1: Install from local directory (recommended for development)
+## 🌟 Features
 
-1. Clone or create the project directory:
+- 🖥️ **Interactive CLI Chat**: Engage directly from your terminal.
+- 🚀 **FastAPI Server**: REST APIs with built-in health monitoring.
+- 🧩 **Efficient Model Management**: Download and manage models easily.
+- 📦 **Docker Support**: Containerize your models for better isolation.
+- ⚡ **GPU Acceleration**: Automatically utilize available GPUs.
+- 🎯 **Model Quantization**: Reduce memory usage (4-bit and 8-bit).
+- 📚 **Conversation History**: Persistent chat context.
+- 💡 **Rich Terminal Interface**: Enhanced CLI with markdown rendering.
+- ✅ **Robust Error Handling**: Graceful handling of issues.
 
+---
+
+## 🛠️ Installation
+
+### 📦 From PyPI (Recommended)
 ```bash
-mkdir pipelm
-cd pipelm
+pip install pipelm
 ```
 
-2. Create the following files:
-   * `pipelm.py` (main script)
-   * `app.py` (FastAPI server)
-   * `setup.py` (package configuration)
-
-3. Install the package in development mode:
-
+### 💻 From Source
 ```bash
+git clone https://github.com/yourusername/pipelm.git
+cd pipelm
 pip install -e .
 ```
 
-### Method 2: Run without installing
-
-You can also run the application directly without installing it as a package:
-
+### 🐳 With Docker
 ```bash
-python pipelm.py run HuggingFaceTB/SmolLM2-1.7B-Instruct
+git clone https://github.com/yourusername/pipelm.git
+cd pipelm
+
+docker build -f docker/Dockerfile -t pipelm .
+
+docker run -p 8080:8080 -v pipelm_data:/root/.pipelm -e HF_TOKEN=your_token -e MODEL_NAME=mistralai/Mistral-7B-Instruct-v0.2 pipelm
 ```
 
-### Dependencies
+---
 
-Install all required dependencies:
+## 🚦 Usage
 
+### 📥 Download a Model
 ```bash
-pip install -r requirements.txt
+pipelm download mistralai/Mistral-7B-Instruct-v0.2
 ```
 
-## Usage
-
-### Running PipeLM
-
-After installation, you can run PipeLM with the following command:
-
-```bash
-pipelm run HuggingFaceTB/SmolLM2-1.7B-Instruct
-```
-
-This will:
-1. Download the model if not already present
-2. Start the FastAPI server
-3. Launch the interactive chat interface
-
-You can also specify additional options:
-
-```bash
-pipelm run HuggingFaceTB/SmolLM2-1.7B-Instruct --port 8081 --context-length 2048
-```
-
-### Listing Downloaded Models
-
-To see which models you have already downloaded:
-
+### 📋 List Downloaded Models
 ```bash
 pipelm list
 ```
 
-### Testing the API with the Client
-
-To directly test the API server without using the chat interface:
-
+### 💬 Interactive Chat
 ```bash
-pipelm client --prompt "Write a short poem about programming."
+pipelm chat mistralai/Mistral-7B-Instruct-v0.2
+
+# Using local model
+pipelm chat /path/to/local/model
+
+# With quantization
+pipelm chat mistralai/Mistral-7B-Instruct-v0.2 --quantize 4bit
 ```
 
-### Chat Commands
+### 🚀 Start API Server
+```bash
+pipelm server mistralai/Mistral-7B-Instruct-v0.2 --port 8080
 
-Within the chat interface, you can use the following commands:
-* `/exit` or `/quit` - Exit the chat
-* `/clear` - Clear conversation history
+# Using local model
+pipelm server /path/to/local/model --port 8080
 
-## API Endpoints
+# With quantization
+pipelm server mistralai/Mistral-7B-Instruct-v0.2 --quantize 8bit
+```
 
-### GET /health
-Returns health status information about the server and model.
+### 🐳 Docker Compose
+```bash
+export HF_TOKEN=your_token
+docker-compose up -d pipelm
+```
 
-Response:
+---
+
+## 📡 API Endpoints
+
+### 🛠️ Quick Commands
+
+#### Check Server Health:
+```bash
+curl http://localhost:8080/health
+```
+
+#### Send a Sample Prompt:
+```bash
+curl -X POST http://localhost:8080/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "Explain the difference between AI and machine learning."}],
+    "max_tokens": 200,
+    "temperature": 0.7,
+    "top_p": 0.9
+  }'
+```
+
+
+### ✅ GET `/health`
+Health status of server and model.
+
 ```json
 {
   "status": "healthy",
-  "model": "SmolLM2-1.7B-Instruct",
-  "uptime_seconds": 42.5
+  "model": "Mistral-7B-Instruct-v0.2",
+  "uptime": 42.5
 }
 ```
 
-### POST /generate
-Generates text based on a prompt.
+### 📖 GET `/`
+Swagger UI for API documentation.
 
-Request body:
+### ✏️ POST `/generate`
+Generate text from conversation history.
+
+Request:
 ```json
 {
-  "prompt": "Write a poem about AI.",
-  "max_tokens": 256,
-  "temperature": 0.7
+  "messages": [
+    {"role": "user", "content": "What is artificial intelligence?"}
+  ],
+  "max_tokens": 1024,
+  "temperature": 0.7,
+  "top_p": 0.9
 }
 ```
 
 Response:
 ```json
 {
-  "text": "Silicon dreams and neural streams...",
-  "tokens_generated": 45,
-  "generation_time": 1.25
+  "generated_text": "Artificial intelligence (AI) refers to the simulation of human intelligence in machines..."
 }
 ```
 
-## Project Structure
+---
 
+## 🎯 Chat Commands
+
+- `/exit` or `/quit` – Exit chat
+- `/clear` – Clear conversation history
+- `/info` – Display current model information
+
+---
+
+## ⚙️ Environment Variables
+
+- `HF_TOKEN`: Your Hugging Face token (required).
+- `MODEL_DIR`: Local model directory.
+- `PORT`: Server port (default: 8080).
+
+---
+
+## 📁 Project Structure
 ```
 pipelm/
-├── pipelm.py      # Main script with CLI commands
-├── app.py         # FastAPI server implementation
-├── setup.py       # Package configuration for installation
-├── .gitignore
-└── LICENSE
+├── pipelm/                 # Main package
+│   ├── __init__.py
+│   ├── cli.py
+│   ├── server.py
+│   ├── downloader.py
+│   ├── chat.py
+│   └── utils.py
+├── docker/                 # Docker setup
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── setup.py
+├── README.md
+└── requirements.txt
 ```
 
-## Troubleshooting
+---
+
+## ✅ Requirements
+
+- Python 3.8+
+- Torch (GPU support recommended)
+- 16+ GB RAM (model-dependent)
+- CUDA-compatible GPU (recommended)
+
+---
+
+## 🚩 Troubleshooting
 
 ### Model Download Issues
-
-If you encounter issues downloading models:
-
-1. Check your Hugging Face token:
-   * Create or verify your token at https://huggingface.co/settings/tokens
-   * Set it in your `.env` file as `HF_TOKEN=your_token_here`
-2. Network issues:
-   * Check your internet connection
-   * Verify you have permissions to download the model
+- Verify Hugging Face token.
+- Check network connectivity.
 
 ### Server Startup Issues
-
-If the server fails to start:
-
-1. Check if another process is using port 8080:
-   * Use a different port: `pipelm run HuggingFaceTB/SmolLM2-1.7B-Instruct --port 8081`
-2. Verify Python dependencies:
-   * Ensure all required packages are installed: `pip install -r requirements.txt`
+- Change default port if already in use.
+- Ensure dependencies are installed.
 
 ### Memory Issues
+- Use smaller models or quantization.
 
-If you encounter memory errors:
+---
 
-1. Choose a smaller model
-2. Ensure you have enough RAM and GPU VRAM if using CUDA
-3. Reduce the context length: `pipelm run HuggingFaceTB/SmolLM2-1.7B-Instruct --context-length 2048`
+## 💽 Model Storage
 
-## Examples
+- Linux/Mac: `~/.pipelm/models/`
+- Windows: `%LOCALAPPDATA%\pipelm\models\`
+- Docker: `/root/.pipelm/models/`
 
-### Basic chat:
-```bash
-pipelm run TheBloke/SmolLM2-1.7B-Instruct-GGUF
-```
+---
 
-### Testing specific prompts with the client:
-```bash
-pipelm client --prompt "Explain quantum computing in simple terms."
-```
+## 🙌 Contributing
 
-## Contributing
+Contributions are welcome! Submit a Pull Request.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+---
 
-## License
+## 📜 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License. See `LICENSE` for details.

@@ -1,0 +1,18 @@
+# Core dependencies
+torch>=2.0.0
+transformers>=4.30.0
+huggingface-hub>=0.16.0
+pydantic>=1.10.0
+fastapi>=0.95.0
+uvicorn>=0.22.0
+requests>=2.28.0
+
+# CLI and utilities
+rich>=12.0.0
+appdirs>=1.4.4
+python-dotenv>=1.0.0
+
+# Optional dependencies
+accelerate>=0.20.0
+sentencepiece>=0.1.99
+bitsandbytes>=0.40.0  # For 4-bit and 8-bit quantization support

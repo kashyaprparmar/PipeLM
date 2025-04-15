@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  pipelm:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: pipelm:latest
+    container_name: pipelm
+    volumes:
+      - pipelm_data:/root/.pipelm
+    ports:
+      - "8080:8080"
+    environment:
+      - MODEL_NAME=HuggingFaceTB/SmolLM2-1.7B-Instruct
+      - HF_TOKEN=${HF_TOKEN}
+    command: >
+      bash -c "
+        if [ ! -z \"$$MODEL_NAME\" ]; then
+          python -m pipelm download \"$$MODEL_NAME\" &&
+          python -m pipelm server \"$$MODEL_NAME\" --port 8080
+        else
+          echo 'MODEL_NAME environment variable not set. Please set it to a valid model name.'
+          exit 1
+        fi
+      "
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # Add a second service for testing queries
+  test-query:
+    image: alpine/curl:latest
+    container_name: pipelm-test
+    depends_on:
+      - pipelm
+    command: >
+      sh -c "
+        echo 'Waiting for PipeLM API to start...' &&
+        sleep 30 &&
+        echo 'Sending test query to PipeLM API...' &&
+        curl -X POST http://pipelm:8080/generate -H 'Content-Type: application/json' -d '{\"messages\": [{\"role\": \"user\", \"content\": \"Hello, please introduce yourself.\"}], \"max_tokens\": 500}' &&
+        echo '\nTest complete!'
+      "
+    profiles:
+      - test
+
+volumes:
+  pipelm_data:
+    driver: local
