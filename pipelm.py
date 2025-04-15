@@ -215,7 +215,7 @@ def ensure_model_available(model_name: str, base_model_dir: str = "models") -> s
         snapshot_download(
             repo_id=model_name,
             local_dir=model_dir,
-            local_dir_use_symlinks=False,
+            # local_dir_use_symlinks=False,
             token=token,
             allow_patterns=allow_patterns,
             tqdm_class=None,  # Disable default tqdm progress

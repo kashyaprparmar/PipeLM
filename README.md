@@ -22,7 +22,6 @@ PipeLM provides a simple HTTP API server and interactive terminal interface for 
 - 📁 Model-specific directories to avoid conflicts
 - 🧩 Support for various model backends 
 - 🛠️ Easy configuration via CLI
-- 📊 Basic metrics collection (tokens/sec, latency)
 - ⚠️ Robust error handling
 
 ## Installation
