@@ -73,3 +73,16 @@ test-results.xml
 .dmypy.json
 .pyre/
 .pytype/
+
+models/
+/models/
+/.pipelm/
+.pipelm/
+**/models/
+__pycache__/
+logs/
+.env
+
+# Model files directories
+**/models/**
+models/**
