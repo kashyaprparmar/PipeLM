@@ -41,15 +41,15 @@ pip install pipelm
 
 ### 💻 From Source (Recommended)
 ```bash
-git clone https://github.com/yourusername/pipelm.git
-cd pipelm
+git clone https://github.com/kashyaprparmar/PipeLM
+cd PipeLM
 pip install -e .
 ```
 
 ### 🐳 With Docker
 ```bash
-git clone https://github.com/yourusername/pipelm.git
-cd pipelm
+git clone https://github.com/kashyaprparmar/PipeLM
+cd PipeLM
 
 docker build -f docker/Dockerfile -t pipelm .
 
