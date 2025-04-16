@@ -125,11 +125,10 @@ def ensure_model_available(model_name: str) -> str:
     # Check if model is already present and complete
     required_files = [
         "config.json",
-        "generation_config.json",
+        "*-config.json",
         "tokenizer.json",
         "model.safetensors",
         "model-*.safetensors",
-        "model.safetensors.index.json"
     ]
     
     model_files_check = lambda dir_path: (
