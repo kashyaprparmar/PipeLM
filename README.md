@@ -5,7 +5,7 @@
 PipeLM provides an intuitive CLI interface for interactive chat and a robust FastAPI server to integrate LLMs seamlessly into your applications.
 
 ---
-![Demo](assets/demo2.gif)
+![Demo](assets/demo.gif)
 ---
 ## Overview
 
