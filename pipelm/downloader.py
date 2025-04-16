@@ -146,7 +146,6 @@ def ensure_model_available(model_name: str) -> str:
             return model_dir
         if not model_files_check(model_dir):
             console.print(f"[red]Download incomplete. No model weights found (safetensors or bin files).[/red]")
-            sys.exit(1)
 
         else:
             console.print(f"[yellow]Warning: Model directory exists but missing files: {', '.join(missing_files)}. Re-downloading...[/yellow]")
