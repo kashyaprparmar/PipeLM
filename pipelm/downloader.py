@@ -127,15 +127,27 @@ def ensure_model_available(model_name: str) -> str:
         "config.json",
         "generation_config.json",
         "tokenizer.json",
-        "model.safetensors"
+        "model.safetensors",
+        "model-*.safetensors",
+        "model.safetensors.index.json"
     ]
     
+    model_files_check = lambda dir_path: (
+        os.path.isfile(os.path.join(dir_path, "model.safetensors")) or
+        os.path.isfile(os.path.join(dir_path, "pytorch_model.bin")) or
+        any(f.startswith("model-") and f.endswith(".safetensors") for f in os.listdir(dir_path)) or
+        any(f.startswith("pytorch_model-") and f.endswith(".bin") for f in os.listdir(dir_path))
+    )
     # Check if model directory exists and contains all required files
     if os.path.isdir(model_dir):
         missing_files = [f for f in required_files if not os.path.isfile(os.path.join(model_dir, f))]
         if not missing_files:
             console.print(f"[green]Model '{model_name}' is already present in '{model_dir}' folder. Skipping download.[/green]")
             return model_dir
+        if not model_files_check(model_dir):
+            console.print(f"[red]Download incomplete. No model weights found (safetensors or bin files).[/red]")
+            sys.exit(1)
+
         else:
             console.print(f"[yellow]Warning: Model directory exists but missing files: {', '.join(missing_files)}. Re-downloading...[/yellow]")
             # Optionally, backup the existing incomplete directory
@@ -163,9 +175,14 @@ def ensure_model_available(model_name: str) -> str:
             "vocab.json",
             "merges.txt",
             "special_tokens_map.json",
-            "model.safetensors"
+            # Model files - handle both single and split files
+            "model.safetensors",
+            "model-*.safetensors",  # For split model files (e.g., model-00001-of-00002.safetensors)
+            "model.safetensors.index.json",  # Model index file
+            "pytorch_model.bin",  # For models using .bin format instead of safetensors
+            "pytorch_model-*.bin",  # Split .bin model files
+            "pytorch_model.bin.index.json"  # Index for .bin models
         ]
-        
         # Reset download stats
         download_stats = {
             "total_files": len(allow_patterns),  # Estimate of files to download
