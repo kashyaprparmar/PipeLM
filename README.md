@@ -54,7 +54,7 @@ cd PipeLM
 
 docker build -f docker/Dockerfile -t pipelm .
 
-docker run -p 8080:8080 -v pipelm_data:/root/.pipelm -e HF_TOKEN=your_token -e MODEL_NAME=mistralai/Mistral-7B-Instruct-v0.2 pipelm
+docker run -p 8080:8080 -v pipelm_data:/root/.pipelm -e HF_TOKEN=your_token -e MODEL_NAME=HuggingFaceTB/SmolLM2-1.7B-Instruct pipelm
 ```
 
 ---
@@ -63,7 +63,7 @@ docker run -p 8080:8080 -v pipelm_data:/root/.pipelm -e HF_TOKEN=your_token -e M
 
 ### Download a Model
 ```bash
-pipelm download mistralai/Mistral-7B-Instruct-v0.2
+pipelm download HuggingFaceTB/SmolLM2-1.7B-Instruct
 ```
 
 ### List Downloaded Models
@@ -73,24 +73,24 @@ pipelm list
 
 ### Interactive Chat
 ```bash
-pipelm chat mistralai/Mistral-7B-Instruct-v0.2
+pipelm chat HuggingFaceTB/SmolLM2-1.7B-Instruct
 
 # Using local model
 pipelm chat /path/to/local/model
 
 # With quantization
-pipelm chat mistralai/Mistral-7B-Instruct-v0.2 --quantize 4bit
+pipelm chat HuggingFaceTB/SmolLM2-1.7B-Instruct --quantize 4bit
 ```
 
 ### 🚀 Start API Server
 ```bash
-pipelm server mistralai/Mistral-7B-Instruct-v0.2 --port 8080
+pipelm server HuggingFaceTB/SmolLM2-1.7B-Instruct --port 8080
 
 # Using local model
 pipelm server /path/to/local/model --port 8080
 
 # With quantization
-pipelm server mistralai/Mistral-7B-Instruct-v0.2 --quantize 8bit
+pipelm server HuggingFaceTB/SmolLM2-1.7B-Instruct --quantize 8bit
 ```
 
 ### 🐳 Docker Compose
@@ -129,7 +129,7 @@ Health status of server and model.
 ```json
 {
   "status": "healthy",
-  "model": "Mistral-7B-Instruct-v0.2",
+  "model": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
   "uptime": 42.5
 }
 ```
@@ -225,7 +225,7 @@ If you encounter issues downloading models:
 If the server fails to start:
 
 1. Check if another process is using port 8080:
-   * Use a different port: `pipelm server mistralai/Mistral-7B-Instruct-v0.2 --port 8081`
+   * Use a different port: `pipelm server HuggingFaceTB/SmolLM2-1.7B-Instruct --port 8081`
 2. Verify Python dependencies:
    * Ensure all required packages are installed: `pip install -r requirements.txt`
 
@@ -234,7 +234,7 @@ If the server fails to start:
 If you encounter memory errors:
 
 1. Choose a smaller model
-2. Try quantization: `pipelm chat mistralai/Mistral-7B-Instruct-v0.2 --quantize 4bit`
+2. Try quantization: `pipelm chat HuggingFaceTB/SmolLM2-1.7B-Instruct --quantize 4bit`
 3. Ensure you have enough RAM and GPU VRAM if using CUDA
 
 ## 💽 Model Storage
