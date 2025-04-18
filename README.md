@@ -237,7 +237,7 @@ If you encounter memory errors:
 2. Try quantization: `pipelm chat HuggingFaceTB/SmolLM2-1.7B-Instruct --quantize 4bit`
 3. Ensure you have enough RAM and GPU VRAM if using CUDA
 
-## 💽 Model Storage
+## Model Storage
 
 Models are downloaded to:
 - Linux/Mac: `~/.pipelm/models/[sanitized_model_name]` OR `.local/share/pipelm/models` OR `/home/kashyap/snap/code/190/.local/share/pipelm/models`
