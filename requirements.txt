@@ -16,3 +16,8 @@ python-dotenv>=1.0.0
 accelerate>=0.20.0
 sentencepiece>=0.1.99
 bitsandbytes>=0.40.0  # For 4-bit and 8-bit quantization support
+
+# Development dependencies
+pytest>=7.0.0
+black>=23.0.0
+isort>=5.12.0

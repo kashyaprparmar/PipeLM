@@ -17,9 +17,24 @@ setup(
     long_description_content_type="text/markdown",
     author="Kashyap Parmar",
     author_email="kashyaprparmar@gmail.com",
-    url="https://github.com/yourusername/pipelm",
+    url="https://github.com/kashyaprparmar/pipelm",
     packages=find_packages(),
-    install_requires=requirements,
+    # List core dependencies directly to help uv resolve them properly
+    install_requires=[
+        "torch>=2.0.0",
+        "transformers>=4.30.0",
+        "huggingface-hub>=0.16.0",
+        "pydantic>=1.10.0",
+        "fastapi>=0.95.0",
+        "uvicorn>=0.22.0",
+        "requests>=2.28.0",
+        "rich>=12.0.0",
+        "appdirs>=1.4.4",
+        "python-dotenv>=1.0.0",
+        "accelerate>=0.20.0",
+        "sentencepiece>=0.1.99",
+        "bitsandbytes>=0.40.0"
+    ],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",

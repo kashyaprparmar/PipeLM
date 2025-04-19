@@ -35,16 +35,48 @@ PipeLM simplifies interaction with AI models, allowing you to:
 
 ## Installation
 
+### Setting Up Virtual Environment
+
+#### Step 1: Create a Python Virtual Environment
+
+```bash
+# Clone the repository
+git clone https://github.com/kashyaprparmar/PipeLM
+cd PipeLM
+
+# Create virtual environment with Python's venv
+python -m venv .venv
+
+# Activate the environment
+# On Linux/macOS:
+source .venv/bin/activate
+
+# On Windows:
+.venv\Scripts\activate
+```
+
+#### Step 2: Install uv Within the Virtual Environment
+
+```bash
+# Install uv package manager
+pip install uv
+```
+### 💻 From Source (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/kashyaprparmar/PipeLM
+cd PipeLM
+
+# Install the package with uv (recommended)
+uv pip install -e .
+
+# Install just the dependencies from requirements.txt
+uv pip install -r requirements.txt
+```
+
 ### 📦 From PyPI 
 ```bash
 pip install pipelm
-```
-
-### 💻 From Source (Recommended)
-```bash
-git clone https://github.com/kashyaprparmar/PipeLM
-cd PipeLM
-pip install -e .
 ```
 
 ### 🐳 With Docker
@@ -56,7 +88,6 @@ docker build -f docker/Dockerfile -t pipelm .
 
 docker run -p 8080:8080 -v pipelm_data:/root/.pipelm -e HF_TOKEN=your_token -e MODEL_NAME=HuggingFaceTB/SmolLM2-1.7B-Instruct pipelm
 ```
-
 ---
 
 ## Usage
