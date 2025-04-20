@@ -1,6 +1,6 @@
 # PipeLM
 
-*A lightweight, modular tool for running Large Language Models (LLMs) from Hugging Face.*
+*A lightweight, CLI modular tool for running Large Language Models (LLMs) & SLMs from Hugging Face.*
 
 PipeLM provides an intuitive CLI interface for interactive chat and a robust FastAPI server to integrate LLMs seamlessly into your applications.
 
@@ -13,34 +13,33 @@ PipeLM simplifies interaction with AI models, allowing you to:
 
 - 📥 **Download and manage** models from Hugging Face.
 - 🌐 **Serve models** through a standardized REST API.
-- 💬 **Test prompts** via an interactive chat interface.
+- 💬 **Test prompts** via an interactive chat interface & a client
 - 📜 **Maintain conversation history**.
-- 🔄 **Easily switch models** with minimal configuration changes.
+- 🔄 **Easily switch models** with single command.
 
 ---
 
 ## Features
 
-- **Interactive CLI Chat**: Engage directly from your terminal.
-- **FastAPI Server**: REST APIs with built-in health monitoring.
+- **Interactive CLI Chat**: Chat directly from your terminal.
+- **FastAPI Server**: REST APIs with health monitoring.
 - **Efficient Model Management**: Download and manage models easily.
 - **Docker Support**: Containerize your models for better isolation.
 - **GPU Acceleration**: Automatically utilize available GPUs.
 - **Model Quantization**: Reduce memory usage (4-bit and 8-bit).
 - **Conversation History**: Persistent chat context.
 - **Rich Terminal Interface**: Enhanced CLI with markdown rendering.
-- **Robust Error Handling**: Graceful handling of issues.
+- **Robust Error Handling**: Good handling of issues.
 
 ---
 
 ## Installation
 
-### Setting Up Virtual Environment
-
+### 💻 From Source (Recommended)
 #### Step 1: Create a Python Virtual Environment
 
 ```bash
-# Clone the repository
+# Clone the source repository
 git clone https://github.com/kashyaprparmar/PipeLM
 cd PipeLM
 
@@ -61,12 +60,8 @@ source .venv/bin/activate
 # Install uv package manager
 pip install uv
 ```
-### 💻 From Source (Recommended)
+#### Step 3: Install dependencies using uv
 ```bash
-# Clone the repository
-git clone https://github.com/kashyaprparmar/PipeLM
-cd PipeLM
-
 # Install the package with uv (recommended)
 uv pip install -e .
 
@@ -74,7 +69,7 @@ uv pip install -e .
 uv pip install -r requirements.txt
 ```
 
-### 📦 From PyPI 
+### 📦 From PyPI (in development)
 ```bash
 pip install pipelm
 ```
@@ -92,25 +87,30 @@ docker run -p 8080:8080 -v pipelm_data:/root/.pipelm -e HF_TOKEN=your_token -e M
 
 ## Usage
 
-### Download a Model
+### Download a Huggingface Model
 ```bash
 pipelm download HuggingFaceTB/SmolLM2-1.7B-Instruct
 ```
 
-### List Downloaded Models
+### List all Downloaded Models
 ```bash
 pipelm list
 ```
 
-### Interactive Chat
+### Interactive Chat 
 ```bash
+# (Streaming is ENABLED BY DEFAULT)
+# Start chatting with model 
 pipelm chat HuggingFaceTB/SmolLM2-1.7B-Instruct
 
-# Using local model
+# Chatting with local model ( by default loads to port 8080)
 pipelm chat /path/to/local/model
 
-# With quantization
+# Chatting using quantization
 pipelm chat HuggingFaceTB/SmolLM2-1.7B-Instruct --quantize 4bit
+
+# Chatting with model (Streaming DISABLED)
+pipelm chat HuggingFaceTB/SmolLM2-1.7B-Instruct --no-stream
 ```
 
 ### 🚀 Start API Server
@@ -132,7 +132,7 @@ docker-compose up -d pipelm
 
 ---
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### Quick Commands
 
@@ -140,8 +140,12 @@ docker-compose up -d pipelm
 ```bash
 curl http://localhost:8080/health
 ```
-
-#### Send a Sample Prompt:
+#### Script for Testing a Sample Prompt
+```bash
+# Checks the server health and runs a sample prompt in the server
+python client.py
+```
+#### Send a Sample Prompt (cURL):
 ```bash
 curl -X POST http://localhost:8080/generate \
   -H "Content-Type: application/json" \
@@ -154,7 +158,7 @@ curl -X POST http://localhost:8080/generate \
 ```
 
 
-### ✅ GET `/health`
+### GET `/health`
 Health status of server and model.
 
 ```json
@@ -165,10 +169,10 @@ Health status of server and model.
 }
 ```
 
-### 📖 GET `/`
+### GET `/docs`
 Swagger UI for API documentation.
 
-### ✏️ POST `/generate`
+### POST `/generate`
 Generate text from conversation history.
 
 Request:
@@ -215,6 +219,7 @@ pipelm/
 │   ├── __init__.py
 │   ├── cli.py
 │   ├── server.py
+│   ├── client.py
 │   ├── downloader.py
 │   ├── chat.py
 │   └── utils.py

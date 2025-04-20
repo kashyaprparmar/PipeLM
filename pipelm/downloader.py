@@ -1,274 +1,306 @@
-"""
-downloader.py: Model download and management for PipeLM
-"""
+# downloader.py: Model download and management for PipeLM
+
 import os
 import sys
 import time
 import shutil
-import threading
-from typing import Dict, Any
+import glob # For finding old incomplete directories
+from typing import Dict, Any, Optional, Type 
 from rich.console import Console
 from rich.table import Table
-from rich.live import Live
+from rich.progress import (
+    Progress,
+    BarColumn,
+    DownloadColumn,
+    TextColumn,
+    TransferSpeedColumn,
+    TimeRemainingColumn,
+    TaskID
+)
+try:
+    from tqdm.auto import tqdm
+    _tqdm_available = True
+except ImportError:
+    _tqdm_available = False
 
-from pipelm.utils import sanitize_model_name, get_models_dir, format_speed, format_size, get_huggingface_token
+try:
+    from huggingface_hub import snapshot_download, list_repo_files
+    from huggingface_hub.utils import GatedRepoError, RepositoryNotFoundError
+    _hf_hub_available = True
+except ImportError:
+    _hf_hub_available = False
+
+from pipelm.utils import sanitize_model_name, get_models_dir, format_size, get_huggingface_token
 
 console = Console()
 
-# File download tracking globals
-download_stats = {
-    "total_files": 0,
-    "completed_files": 0,
-    "current_file": "",
-    "current_size": 0,
-    "total_size": 0,
-    "start_time": 0,
-    "downloaded_bytes": 0,
-    "download_speed": 0,  # bytes per second
-    "speed_history": [],  # List to track download speeds for smoothing
-}
+# --- Rich Progress Integration with TQDM ---
+class RichTqdm(tqdm):
+    """TQDM compatible class using rich.progress."""
+    _current_progress: Optional[Progress] = None
 
-def huggingface_download_callback(download_info: Dict[str, Any]) -> None:
-    """Callback function for tracking huggingface_hub download progress."""
-    global download_stats
-    
-    # Initialize time if this is the first callback
-    if download_stats["start_time"] == 0:
-        download_stats["start_time"] = time.time()
-    
-    # Update stats based on new information
-    if download_info["status"] == "ongoing":
-        download_stats["current_file"] = os.path.basename(download_info["filename"])
-        
-        if "downloaded" in download_info and "total" in download_info:
-            if download_info["total"] > 0:  # Avoid division by zero
-                # Update current file progress
-                download_stats["current_size"] = download_info["total"]
-                download_stats["downloaded_bytes"] = download_info["downloaded"]
-                
-                # Calculate download speed using a moving average
-                elapsed = time.time() - download_stats["start_time"]
-                if elapsed > 0:  # Avoid division by zero
-                    current_speed = download_info["downloaded"] / elapsed
-                    download_stats["speed_history"].append(current_speed)
-                    # Keep only the last 5 speed measurements for the moving average
-                    if len(download_stats["speed_history"]) > 5:
-                        download_stats["speed_history"].pop(0)
-                    # Calculate the average speed
-                    download_stats["download_speed"] = sum(download_stats["speed_history"]) / len(download_stats["speed_history"])
-    
-    elif download_info["status"] == "complete":
-        # File download complete
-        download_stats["completed_files"] += 1
-        download_stats["current_file"] = ""
-        download_stats["current_size"] = 0
-        download_stats["downloaded_bytes"] = 0
+    def __init__(self, *args, **kwargs):
+        self.progress = RichTqdm._current_progress
+        self._task_id: Optional[TaskID] = None 
+        self.desc = kwargs.get("desc", "Downloading...")
+        super().__init__(*args, **kwargs)
 
-def update_download_display() -> None:
-    """Update the download progress display in a separate thread."""
-    global download_stats
-    
-    with Live(auto_refresh=False) as live:
-        while download_stats["completed_files"] < download_stats["total_files"]:
-            # Create a rich table for display
-            table = Table(show_header=False, box=None, padding=(0, 1))
-            table.add_column()
-            table.add_column()
-            
-            # Progress information
-            elapsed = time.time() - download_stats["start_time"] if download_stats["start_time"] > 0 else 0
-            progress_pct = (download_stats["completed_files"] / download_stats["total_files"]) * 100 if download_stats["total_files"] > 0 else 0
-            
-            # Add overall progress
-            progress_text = f"Fetching {download_stats['total_files']} files: {progress_pct:.0f}%|"
-            bar_length = 40
-            completed_bars = int((progress_pct / 100) * bar_length)
-            progress_bar = "#" * completed_bars + "-" * (bar_length - completed_bars)
-            progress_text += progress_bar + f"| {download_stats['completed_files']}/{download_stats['total_files']}"
-            
-            if elapsed > 0:
-                eta = (elapsed / download_stats["completed_files"]) * (download_stats["total_files"] - download_stats["completed_files"]) if download_stats["completed_files"] > 0 else 0
-                time_info = f" [{time.strftime('%M:%S', time.gmtime(elapsed))}<{time.strftime('%M:%S', time.gmtime(eta))}]"
-                speed_info = f" {format_speed(download_stats['download_speed'])}"
-                progress_text += time_info + speed_info
-            
-            table.add_row(progress_text, "")
-            
-            # Add current file information if available
-            if download_stats["current_file"]:
-                file_text = f"Downloading: {download_stats['current_file']}"
-                if download_stats["current_size"] > 0:
-                    file_progress = (download_stats["downloaded_bytes"] / download_stats["current_size"]) * 100
-                    file_text += f" ({file_progress:.1f}%)"
-                table.add_row(file_text, "")
-            
-            # Update the live display
-            live.update(table, refresh=True)
-            time.sleep(0.1)
-def ensure_model_available(model_name: str) -> str:
+    @property
+    def task_id(self) -> Optional[TaskID]:
+        # Create task lazily on first access if needed
+        if self._task_id is None and self.progress:
+            # Try to get total from kwargs if available early, otherwise use self.total
+            total_val = self.total # tqdm usually calculates this
+            self._task_id = self.progress.add_task(self.desc, total=total_val)
+        return self._task_id
+
+    def display(self, msg=None, pos=None):
+        # Prevent default tqdm output
+        pass
+
+    def update(self, n=1):
+        # Call tqdm's update first to update internal state (like self.n)
+        super().update(n)
+        if self.progress and self.task_id is not None:
+            current_total = self.progress.tasks[self.task_id].total
+            new_total = self.total
+            update_args = {"completed": self.n}
+            if new_total is not None and new_total != current_total:
+                update_args["total"] = new_total
+
+            self.progress.update(self.task_id, **update_args) # type: ignore
+
+    def close(self):
+        # Ensure Rich progress reflects completion
+        if self.progress and self.task_id is not None:
+            is_complete = self.total is not None and self.n >= self.total
+            final_description = f"[green]✔[/green] {self.desc}" if is_complete else f"[yellow]![/yellow] {self.desc}"
+            self.progress.update(
+                self.task_id,
+                completed=self.n, # Show final count
+                total=self.total,
+                description=final_description,
+                visible=True
+                )
+        # Call tqdm's close last
+        super().close()
+
+
+    def set_description(self, desc=None, refresh=True):
+        # Update internal description
+        super().set_description(desc, refresh)
+        # Update Rich progress description
+        self.desc = desc or "" # Store the description
+        if self.progress and self._task_id is not None: # Use _task_id as task might not exist yet
+             # Only update if the task has been created
+             self.progress.update(self.task_id, description=self.desc)
+
+def is_model_complete(dir_path: str) -> bool:
+    """Check whether the given model directory contains required files."""
+    # This internal check remains the same logic as before
+    if not os.path.isdir(dir_path):
+        return False
+
+    required_files = {"config.json", "tokenizer.json"} # Core requirements
+    optional_files = {"generation_config.json", "tokenizer_config.json"} # Good to have
+
+    try:
+        files_in_dir = set(os.listdir(dir_path))
+    except FileNotFoundError:
+        return False # Directory doesn't exist
+
+    if not required_files.issubset(files_in_dir):
+        return False
+
+    weight_patterns = [
+        "model.safetensors", "model-*.safetensors",
+        "pytorch_model.bin", "pytorch_model-*.bin"
+    ]
+    # Use os.path.join for cross-platform compatibility in glob
+    has_model_weights = any(glob.glob(os.path.join(dir_path, pattern)) for pattern in weight_patterns)
+
+    if not has_model_weights:
+         return False
+
+    return True
+
+def cleanup_incomplete_downloads(model_dir_base: str) -> None:
+    """Remove previous incomplete download attempts for the same model."""
+    incomplete_pattern = f"{model_dir_base}_incomplete_*"
+    for incomplete_dir in glob.glob(incomplete_pattern):
+        if os.path.isdir(incomplete_dir):
+            try:
+                console.print(f"[dim]Removing previous incomplete download: {incomplete_dir}[/dim]", style="yellow")
+                shutil.rmtree(incomplete_dir)
+            except OSError as e:
+                console.print(f"[red]Error removing directory {incomplete_dir}: {e}[/red]")
+
+def ensure_model_available(model_name: str) -> Optional[str]:
     """
-    Ensure the specified model is downloaded locally. 
-    If not, use Hugging Face token to download it.
-    Returns the full path to the model directory.
+    Ensure the specified model is downloaded locally using huggingface_hub.
+    Shows improved progress using rich.progress.
+    Returns the full path to the model directory, or None on failure.
     """
-    global download_stats
+    # --- Dependency checks remain the same ---
+    if not _tqdm_available:
+        console.print("[red]Error: `tqdm` package not found. Please install it (`pip install tqdm`).[/red]")
+        return None
+    if not _hf_hub_available:
+        console.print("[red]Error: `huggingface-hub` package not found. Please install it (`pip install huggingface-hub`).[/red]")
+        return None
 
-    from huggingface_hub import snapshot_download
-
-    # Get Hugging Face token
+    # --- Variable setup remains the same ---
     token = get_huggingface_token()
-
-    # Get base models directory
     base_model_dir = get_models_dir()
-
-    # Create sanitized model directory name
     sanitized_name = sanitize_model_name(model_name)
     model_dir = os.path.join(base_model_dir, sanitized_name)
 
-    def is_model_complete(dir_path: str) -> bool:
-        """Check whether the given model directory contains required files."""
-        if not os.path.isdir(dir_path):
-            return False
-
-        config_exists = os.path.isfile(os.path.join(dir_path, "config.json"))
-        tokenizer_exists = os.path.isfile(os.path.join(dir_path, "tokenizer.json"))
-        generation_config_exists = os.path.isfile(os.path.join(dir_path, "generation_config.json"))
-
-        has_model_weights = (
-            os.path.isfile(os.path.join(dir_path, "model.safetensors")) or
-            any(f.startswith("model-") and f.endswith(".safetensors") for f in os.listdir(dir_path)) or
-            os.path.isfile(os.path.join(dir_path, "pytorch_model.bin")) or
-            any(f.startswith("pytorch_model-") and f.endswith(".bin") for f in os.listdir(dir_path))
-        )
-
-        return config_exists and tokenizer_exists and has_model_weights
-
-    # Check if model is already downloaded and valid
+    # --- Model check/backup logic remains the same ---
     if is_model_complete(model_dir):
-        console.print(f"[green]Model '{model_name}' is already present in '{model_dir}'. Skipping download.[/green]")
+        console.print(f"[green]Model '{model_name}' is already present and appears complete in '{model_dir}'.[/green]")
         return model_dir
-    elif os.path.isdir(model_dir):
-        console.print(f"[yellow]Warning: Model directory exists but appears incomplete. Re-downloading...[/yellow]")
+    if os.path.isdir(model_dir):
+        console.print(f"[yellow]Model directory '{model_dir}' exists but appears incomplete or corrupted.[/yellow]")
+        cleanup_incomplete_downloads(model_dir)
         backup_dir = f"{model_dir}_incomplete_{int(time.time())}"
-        shutil.move(model_dir, backup_dir)
-        os.makedirs(model_dir, exist_ok=True)
+        try:
+            console.print(f"[dim]Backing up existing directory to {backup_dir}[/dim]")
+            shutil.move(model_dir, backup_dir)
+            os.makedirs(model_dir)
+        except Exception as e:
+             console.print(f"[red]Error backing up existing directory: {e}. Attempting download anyway.[/red]")
+             if not os.path.exists(model_dir):
+                 os.makedirs(model_dir, exist_ok=True)
     else:
-        os.makedirs(model_dir, exist_ok=True)
+        os.makedirs(base_model_dir, exist_ok=True)
+        cleanup_incomplete_downloads(model_dir)
+        os.makedirs(model_dir)
 
-    # Setup download tracking
-    download_stats = {
-        "total_files": 13,  # Estimated file count
-        "completed_files": 0,
-        "current_file": "",
-        "current_size": 0,
-        "total_size": 0,
-        "start_time": 0,
-        "downloaded_bytes": 0,
-        "download_speed": 0,
-        "speed_history": []
-    }
+    # --- Setup Rich Progress (remains the same) ---
+    progress = Progress(
+        TextColumn("[progress.description]{task.description}", justify="right"),
+        BarColumn(bar_width=None),
+        "[progress.percentage]{task.percentage:>3.1f}%", "•",
+        DownloadColumn(), "•",
+        TransferSpeedColumn(), "•",
+        TimeRemainingColumn(),
+        console=console,
+        transient=False
+    )
 
-    # Start progress display thread
-    display_thread = threading.Thread(target=update_download_display)
-    display_thread.daemon = True
-    display_thread.start()
-
-    # Download from Hugging Face
+    # --- Download using snapshot_download ---
     console.print(f"[bold yellow]Downloading model '{model_name}' from Hugging Face...[/bold yellow]")
+    download_successful = False
     try:
-        snapshot_download(
-            repo_id=model_name,
-            local_dir=model_dir,
-            token=token,
-            allow_patterns=[
-                "config.json",
-                "generation_config.json",
-                "tokenizer_config.json",
-                "tokenizer.json",
-                "vocab.json",
-                "merges.txt",
-                "special_tokens_map.json",
-                "model.safetensors",
-                "model-*.safetensors",
-                "model.safetensors.index.json",
-                "pytorch_model.bin",
-                "pytorch_model-*.bin",
-                "pytorch_model.bin.index.json"
-            ],
-            tqdm_class=None,
-            max_workers=1,
-            resume_download=True,
-            force_download=False,
-            ignore_patterns=["*.h5", "*.msgpack"],
-            user_agent="PipeLM/0.1.0",
-        )
+        # *** FIX: Set the progress context on the class ***
+        RichTqdm._current_progress = progress
+        with progress: # Start the Rich Progress display
+             snapshot_download(
+                repo_id=model_name,
+                local_dir=model_dir,
+                # local_dir_use_symlinks=False,
+                token=token,
+                allow_patterns=["*.json", "*.safetensors", "*.bin", "*.txt", "*.py", "*.md", "*.model"],
+                ignore_patterns=["*.h5", "*.ot", "*.msgpack", "*.onnx", "*.onnx_data", "*.ckpt", "*.pt", ".gitattributes", "*.git/*"],
+                force_download=True,
+                max_workers=8,
+                # *** FIX: Pass the CLASS itself, not a lambda/instance ***
+                tqdm_class=RichTqdm,
+                user_agent=f"PipeLM/{'0.1.0'}",
+             )
+             download_successful = True
 
-        download_stats["completed_files"] = download_stats["total_files"]
-        time.sleep(0.5)  # Let the thread display 100% briefly
-
+    except (GatedRepoError, RepositoryNotFoundError) as e:
+         console.print(f"[red]Error accessing model repository '{model_name}': {e}[/red]")
+         console.print("[yellow]Ensure the model name is correct and you have access (use `huggingface-cli login` if needed).[/yellow]")
+         if os.path.isdir(model_dir):
+             try:
+                 shutil.rmtree(model_dir)
+             except OSError:
+                 pass # Ignore errors during cleanup
+         return None
     except Exception as e:
-        console.print(f"[red]Model download failed: {e}[/red]")
-        sys.exit(1)
+        import traceback
+        console.print(f"[red]Model download failed unexpectedly: {e}[/red]")
+        traceback.print_exc()
+        return None
+    finally:
+        # *** FIX: Clean up the class attribute ***
+        RichTqdm._current_progress = None # Important cleanup
 
-    # Final verification
-    if not is_model_complete(model_dir):
-        console.print(f"[red]Download incomplete. Model files are missing or incomplete.[/red]")
-        console.print(f"[yellow]Downloaded files: {os.listdir(model_dir)}[/yellow]")
-        sys.exit(1)
+    # --- Final Verification (remains the same) ---
+    if download_successful and is_model_complete(model_dir):
+        console.print(f"[bold green]Model '{model_name}' downloaded successfully to {model_dir}.[/bold green]")
+        return model_dir
+    else:
+        # Don't exit here, just report and return None
+        console.print(f"[red]Download finished, but model directory appears incomplete or corrupted.[/red]")
+        console.print(f"[yellow]Location: {model_dir}[/yellow]")
+        return None
 
-    console.print(f"[bold green]Model '{model_name}' downloaded successfully to {model_dir}.[/bold green]")
-    return model_dir
 
+# --- list_models function remains unchanged ---
 def list_models() -> None:
-    """List all downloaded models."""
+    """List all downloaded models, checking their status and size."""
     base_model_dir = get_models_dir()
 
     if not os.path.isdir(base_model_dir):
-        console.print("[yellow]No models have been downloaded yet.[/yellow]")
+        console.print("[yellow]Model directory not found. No models downloaded yet.[/yellow]")
         return
 
-    models = [d for d in os.listdir(base_model_dir) if os.path.isdir(os.path.join(base_model_dir, d))]
-    if not models:
-        console.print("[yellow]No models have been downloaded yet.[/yellow]")
+    try:
+        potential_models = [d for d in os.listdir(base_model_dir)
+                            if os.path.isdir(os.path.join(base_model_dir, d))
+                            and not d.startswith(sanitize_model_name(d).rsplit('_incomplete_', 1)[0] + '_incomplete_')]
+    except FileNotFoundError:
+         console.print("[yellow]Model directory not found. No models downloaded yet.[/yellow]")
+         return
+    except Exception as e:
+         console.print(f"[red]Error reading model directory {base_model_dir}: {e}[/red]")
+         return
+
+
+    if not potential_models:
+        console.print("[yellow]No models found in the models directory.[/yellow]")
         return
 
-    # Define the same model completeness checker
-    def is_model_complete(dir_path: str) -> bool:
-        if not os.path.isdir(dir_path):
-            return False
+    console.print(f"[bold blue]Downloaded models ({base_model_dir}):[/bold blue]")
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Model Directory", style="cyan", no_wrap=True)
+    table.add_column("Status", justify="center")
+    table.add_column("Size", style="blue", justify="right")
 
-        config_exists = os.path.isfile(os.path.join(dir_path, "config.json"))
-        tokenizer_exists = os.path.isfile(os.path.join(dir_path, "tokenizer.json"))
-        generation_config_exists = os.path.isfile(os.path.join(dir_path, "generation_config.json"))
+    total_size_all = 0
+    for model_dir_name in sorted(potential_models):
+        model_path = os.path.join(base_model_dir, model_dir_name)
+        status_style = "green"
+        status_icon = "✔"
 
-        has_model_weights = (
-            os.path.isfile(os.path.join(dir_path, "model.safetensors")) or
-            any(f.startswith("model-") and f.endswith(".safetensors") for f in os.listdir(dir_path)) or
-            os.path.isfile(os.path.join(dir_path, "pytorch_model.bin")) or
-            any(f.startswith("pytorch_model-") and f.endswith(".bin") for f in os.listdir(dir_path))
-        )
+        if is_model_complete(model_path):
+            status = "Ready"
+        else:
+            status = "Incomplete"
+            status_style = "yellow"
+            status_icon = "⚠"
 
-        return config_exists and tokenizer_exists and has_model_weights
+        current_size = 0
+        try:
+            for root, dirs, files in os.walk(model_path):
+                dirs[:] = [d for d in dirs if d != '.git']
+                for file in files:
+                    if file == '.DS_Store': continue
+                    try:
+                        fp = os.path.join(root, file)
+                        if os.path.exists(fp) and not os.path.islink(fp):
+                             current_size += os.path.getsize(fp)
+                    except OSError:
+                        pass
+            total_size_all += current_size
+            size_str = format_size(current_size) if current_size > 0 else "-"
+        except Exception:
+            size_str = "[red]Error[/red]"
 
-    console.print("[bold blue]Downloaded models:[/bold blue]")
-    table = Table(show_header=True)
-    table.add_column("Model", style="cyan")
-    table.add_column("Status", style="green")
-    table.add_column("Size", style="blue")
-
-    for model in models:
-        model_path = os.path.join(base_model_dir, model)
-
-        status = "Ready" if is_model_complete(model_path) else "Incomplete"
-
-        # Calculate size
-        total_size = 0
-        for root, dirs, files in os.walk(model_path):
-            for file in files:
-                fp = os.path.join(root, file)
-                total_size += os.path.getsize(fp)
-
-        size_str = format_size(total_size)
-        table.add_row(model, status, size_str)
+        table.add_row(model_dir_name, f"[{status_style}]{status_icon} {status}[/{status_style}]", size_str)
 
     console.print(table)
+    console.print(f"Total size of listed models: [bold blue]{format_size(total_size_all)}[/bold blue]")
