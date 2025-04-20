@@ -1,4 +1,4 @@
-# PipeLM
+![Alt text](assets/logo.png "PipeLM")
 
 *A lightweight, CLI modular tool for running Large Language Models (LLMs) & SLMs from Hugging Face.*
 
