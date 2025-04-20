@@ -157,7 +157,6 @@ curl -X POST http://localhost:8080/generate \
   }'
 ```
 
-
 ### GET `/health`
 Health status of server and model.
 
