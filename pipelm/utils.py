@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import getpass
+import requests
 from typing import Tuple, Dict, Any
 from rich.console import Console
 
@@ -150,3 +151,17 @@ def simulated_stream(text: str) -> None:
         console.print(f"[dim]Generating response{'.' * (i % 4)}[/dim]", end="\r")
         time.sleep(0.1)
     console.print(" " * 30, end="\r")  # Clear the line
+
+def check_health(base_url: str):
+    """
+    Check server health (and implicitly GPU availability on the server).
+    """
+    try:
+        resp = requests.get(f"{base_url}/health")
+        resp.raise_for_status()
+        info = resp.json()
+        console.print(f"[blue]Server status:[/blue] {info.get('status')}\n[blue]Model:[/blue] {info.get('model')}\n[blue]Uptime (s):[/blue] {info.get('uptime'):.2f}")
+    except requests.RequestException as e:
+        console.print(f"[red]Health check failed:[/red] {e}")
+        sys.exit(1)
+

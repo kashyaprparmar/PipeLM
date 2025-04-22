@@ -211,9 +211,9 @@ Response:
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 ```
-pipelm/
+PipeLM/
 ├── pipelm/                 # Main package
 │   ├── __init__.py
 │   ├── cli.py
@@ -229,7 +229,6 @@ pipelm/
 ├── README.md
 └── requirements.txt
 ```
-
 ---
 
 ## Requirements

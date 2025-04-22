@@ -1,3 +1,8 @@
+"""
+client.py
+Test client for PipeLM generate endpoint
+"""
+
 import argparse
 import requests
 import sys

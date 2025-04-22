@@ -4,7 +4,7 @@ import os
 import sys
 import time
 import shutil
-import glob # For finding old incomplete directories
+import glob
 from typing import Dict, Any, Optional, Type 
 from rich.console import Console
 from rich.table import Table
@@ -25,7 +25,8 @@ except ImportError:
 
 try:
     from huggingface_hub import snapshot_download, list_repo_files
-    from huggingface_hub.utils import GatedRepoError, RepositoryNotFoundError
+    from huggingface_hub.utils import GatedRepoError
+    from huggingface_hub.errors import RepositoryNotFoundError, BadRequestError, LocalEntryNotFoundError
     _hf_hub_available = True
 except ImportError:
     _hf_hub_available = False
@@ -174,9 +175,8 @@ def ensure_model_available(model_name: str) -> Optional[str]:
     else:
         os.makedirs(base_model_dir, exist_ok=True)
         cleanup_incomplete_downloads(model_dir)
-        os.makedirs(model_dir)
+        os.makedirs(model_dir, exist_ok=True)
 
-    # --- Setup Rich Progress (remains the same) ---
     progress = Progress(
         TextColumn("[progress.description]{task.description}", justify="right"),
         BarColumn(bar_width=None),
@@ -188,11 +188,9 @@ def ensure_model_available(model_name: str) -> Optional[str]:
         transient=False
     )
 
-    # --- Download using snapshot_download ---
     console.print(f"[bold yellow]Downloading model '{model_name}' from Hugging Face...[/bold yellow]")
     download_successful = False
     try:
-        # *** FIX: Set the progress context on the class ***
         RichTqdm._current_progress = progress
         with progress: # Start the Rich Progress display
              snapshot_download(
@@ -204,42 +202,68 @@ def ensure_model_available(model_name: str) -> Optional[str]:
                 ignore_patterns=["*.h5", "*.ot", "*.msgpack", "*.onnx", "*.onnx_data", "*.ckpt", "*.pt", ".gitattributes", "*.git/*"],
                 force_download=True,
                 max_workers=8,
-                # *** FIX: Pass the CLASS itself, not a lambda/instance ***
                 tqdm_class=RichTqdm,
                 user_agent=f"PipeLM/{'0.1.0'}",
              )
              download_successful = True
 
-    except (GatedRepoError, RepositoryNotFoundError) as e:
-         console.print(f"[red]Error accessing model repository '{model_name}': {e}[/red]")
-         console.print("[yellow]Ensure the model name is correct and you have access (use `huggingface-cli login` if needed).[/yellow]")
+    except (GatedRepoError, RepositoryNotFoundError, BadRequestError, LocalEntryNotFoundError) as e:
+         # Improved error handling for repository not found or access issues
+         if isinstance(e, RepositoryNotFoundError) or isinstance(e, BadRequestError):
+             console.print(f"[red]Error: Repository '{model_name}' not found. Please check the model name.[/red]")
+         elif isinstance(e, GatedRepoError):
+             console.print(f"[red]Error: Repository '{model_name}' exists but requires authentication.[/red]")
+             console.print("[yellow]Use `huggingface-cli login` to authenticate and try again.[/yellow]")
+         elif isinstance(e, LocalEntryNotFoundError):
+             console.print(f"[red]Error: Could not access model files for '{model_name}'.[/red]")
+             console.print("[yellow]Check your internet connection and try again.[/yellow]")
+         else:
+             console.print(f"[red]Error accessing model repository '{model_name}': {e}[/red]")
+         
+         # Clean up the failed download directory
          if os.path.isdir(model_dir):
              try:
                  shutil.rmtree(model_dir)
              except OSError:
-                 pass # Ignore errors during cleanup
+                 pass
          return None
     except Exception as e:
         import traceback
         console.print(f"[red]Model download failed unexpectedly: {e}[/red]")
+        console.print("[dim]Full error traceback:[/dim]")
         traceback.print_exc()
+        
+        # Clean up the failed download directory
+        if os.path.isdir(model_dir) and not is_model_complete(model_dir):
+            try:
+                shutil.rmtree(model_dir)
+            except OSError:
+                pass  # Ignore errors during cleanup
         return None
     finally:
-        # *** FIX: Clean up the class attribute ***
-        RichTqdm._current_progress = None # Important cleanup
+        RichTqdm._current_progress = None
 
-    # --- Final Verification (remains the same) ---
     if download_successful and is_model_complete(model_dir):
         console.print(f"[bold green]Model '{model_name}' downloaded successfully to {model_dir}.[/bold green]")
         return model_dir
     else:
-        # Don't exit here, just report and return None
-        console.print(f"[red]Download finished, but model directory appears incomplete or corrupted.[/red]")
-        console.print(f"[yellow]Location: {model_dir}[/yellow]")
+        if download_successful:
+            console.print(f"[red]Download finished, but model directory appears incomplete or corrupted.[/red]")
+            console.print(f"[yellow]Location: {model_dir}[/yellow]")
+        else:
+            console.print(f"[red]Download failed for model '{model_name}'.[/red]")
+        
+        # Only clean up if directory exists and is incomplete
+        if os.path.isdir(model_dir) and not is_model_complete(model_dir):
+            try:
+                shutil.rmtree(model_dir)
+                console.print(f"[dim]Removed incomplete model directory.[/dim]")
+            except OSError as e:
+                console.print(f"[yellow]Could not remove incomplete model directory: {e}[/yellow]")
+        
         return None
 
 
-# --- list_models function remains unchanged ---
 def list_models() -> None:
     """List all downloaded models, checking their status and size."""
     base_model_dir = get_models_dir()

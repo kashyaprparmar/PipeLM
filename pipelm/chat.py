@@ -134,38 +134,28 @@ def interactive_chat(base_url: str = "http://localhost:8080", streaming: bool = 
 
 
 # send_single_message 
-def send_single_message(message: str, base_url: str = "http://localhost:8080", image: str = "",stream:str=True, temperature: float = 0.7, max_tokens: int=1024, top_p: float=0.9) -> str:
+def send_single_message(message: str, base_url: str = "http://localhost:8080", model_type:str = "text2text", image: str = "",stream:str=True, temperature: float = 0.7, max_tokens: int=1024, top_p: float=0.9) -> str:
     """Send a single message to the model and return the response (non-streaming)."""
     messages = [{"role": "user", "content": message}]
-    
-    if image!="":
-        # If an image is provided, add it to the message
+    request_data = {
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": top_p,
+        "stream": stream # default to True
+    }
+    if image != "" and model_type == "image2text":
         messages = [
             {
                 "role": "user",
                 "content": [
                     {"type": "image"},
-                    {"type": "text", "text": message}
+                    {"type": "user", "text": message}
                 ]
             },
         ]
-        request_data = {
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": top_p,
-            "stream": stream, # default to True
-            "image": image # Add image if provided
-        }
-    else:
-        request_data = {
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": top_p,
-            "stream": stream # default to True
-        }
-    
+        request_data["messages"] = messages
+        request_data["image"] = image    
     try:
         response = requests.post(
             f"{base_url}/generate",
