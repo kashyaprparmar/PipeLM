@@ -6,16 +6,25 @@ import time
 import subprocess
 import getpass
 from rich.console import Console
+from pyfiglet import Figlet
+import shutil
 
-from pipelm.downloader import ensure_model_available, list_models
+from huggingface_hub import snapshot_download
+from pipelm.downloader import ensure_model_available, list_models, is_model_complete
 from pipelm.server import launch_server, wait_for_server
 from pipelm.chat import interactive_chat, send_single_message
-from pipelm.utils import check_gpu_availability, check_health, get_models_dir, sanitize_model_name
+from pipelm.utils import check_gpu_availability, check_health, get_models_dir, sanitize_model_name, get_huggingface_token
 
 console = Console()
 
 # Global variable to hold the server process for signal handling
 server_process_global = None
+
+def print_banner():
+    """Render and print the PipeLM banner."""
+    f = Figlet(font="slant")
+    banner = f.renderText("PipeLM")
+    console.print(f"[cyan]{banner}[/cyan]")
 
 def signal_handler(sig, frame):
     """Handle exit signals properly."""
@@ -36,6 +45,71 @@ def signal_handler(sig, frame):
         console.print("\n[bold red]Shutting down...[/bold red]")
     sys.exit(0)
 
+def login_command(token_arg:str=None)-> None:
+    token = token_arg
+
+    if token:
+        os.environ['HF_TOKEN']=token
+        console.print(f"[yellow]Token found in command argument.[/yellow]")
+        return
+    
+    token = os.environ.get('HF_TOKEN')
+    if token:
+        console.print(f"[yellow]Token found in environment variable.[/yellow]")
+        return
+    
+    # check if the token is in the config file
+    cfg = os.path.join(os.path.dirname(get_models_dir()), 'config')
+    tf = os.path.join(cfg,'hf_token')
+
+    if os.path.exists(tf):
+        with open(tf) as ef:
+            for line in ef:
+                # if line.startswith('HF_TOKEN='):
+                token = line.strip()
+                break
+    if token:
+        os.environ['HF_TOKEN']=token
+        console.print(f"[yellow]Token found in config file {tf}[/yellow]")
+        console.print("[green]Login successful.[/green]")
+        return
+    if not token:
+        console.print("[red]No HF_TOKEN found. Please enter the HF_TOKEN[/red]")        
+        token = token_arg or getpass.getpass("Enter your Hugging Face Access Token (leave blank to cancel): ").strip()
+    if not token:
+        console.print("[yellow]Login cancelled.[/yellow]")
+        return
+    try:
+        subprocess.run(['huggingface-cli','login','--token',token], check=True, stdout=subprocess.DEVNULL)
+    except FileNotFoundError:
+        console.print("[red]Install HF CLI: pip install 'huggingface_hub[cli]'[/red]")
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Login failed (exit {e.returncode}).[/red]")
+        sys.exit(1)
+
+    # save to config and .env
+    try:
+        cfg = os.path.join(os.path.dirname(get_models_dir()), 'config')
+        os.makedirs(cfg,exist_ok=True)
+        tf = os.path.join(cfg,'hf_token')
+        with open(tf,'w') as f: f.write(token)
+        os.chmod(tf,0o600)
+    except:
+        pass
+    ef = os.path.join(os.getcwd(),'.env')
+    try:
+        lines = []
+        if os.path.exists(ef):
+            with open(ef) as f: lines=[l for l in f if not l.startswith('HF_TOKEN=')]
+        lines.append(f"HF_TOKEN={token}\n")
+        with open(ef,'w') as f: f.writelines(lines)
+    except:
+        pass
+    os.environ['HF_TOKEN']=token
+    console.print("[yellow]Token saved to .env & config directory.[/yellow]")
+    console.print("[green]Login successful.[/green]")
+    return
 
 def main():
     """Main entry point for the PipeLM CLI."""
@@ -53,49 +127,20 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Command to run", required=True)
 
     # Download command: wrap huggingface-cli download
-    download_parser = subparsers.add_parser(
-        "download", help="Download a model from Hugging Face via CLI wrapper"
-    )
-    download_parser.add_argument(
-        "repo_id", help="Model name/path on Hugging Face (e.g., 'mistralai/Mistral-7B-v0.1')"
-    )
-    download_parser.add_argument(
-        "filenames", nargs="*", help="Specific file names to download (e.g., config.json)", default=['*.json']
-    )
-    download_parser.add_argument(
-        "--include", nargs="*", help="Glob patterns to include (e.g., '*.safetensors')", default=['*.safetensors']
-    )
-    download_parser.add_argument(
-        "--exclude", nargs="*", help="Glob patterns to exclude (e.g., '*.fp16.*')", default=[]
-    )
-    download_parser.add_argument(
-        "--repo-type", choices=["model", "dataset", "space"], default="model",
-        help="Type of repository to download from"
-    )
-    download_parser.add_argument(
-        "--revision", help="Specific revision (branch, tag, commit) to download from"
-    )
-    download_parser.add_argument(
-        "--cache-dir", help="Cache directory for Hugging Face CLI"
-    )
-    download_parser.add_argument(
-        "--local-dir", help="Target directory for downloaded files"
-    )
-    download_parser.add_argument(
-        "--force-download", action="store_true", help="Force re-download of all files"
-    )
-    download_parser.add_argument(
-        "--resume-download", action="store_true", help="Resume partially downloaded files"
-    )
-    download_parser.add_argument(
-        "--token", help="Hugging Face token to authenticate download"
-    )
-    download_parser.add_argument(
-        "--quiet", action="store_true", help="Suppress progress output"
-    )
-    download_parser.add_argument(
-        "--max-workers", type=int, help="Max parallel download threads"
-    )
+    download_parser = subparsers.add_parser("download", help="Download a model from Hugging Face via CLI wrapper")
+    download_parser.add_argument("repo_id", help="Model name/path on Hugging Face (e.g., 'mistralai/Mistral-7B-v0.1')")
+    download_parser.add_argument("filenames", nargs="*", help="Specific file names to download (e.g., config.json)", default=[])
+    download_parser.add_argument("--include", nargs="*", help="Glob patterns to include (e.g., '*.safetensors')", default=[])
+    download_parser.add_argument("--exclude", nargs="*", help="Glob patterns to exclude (e.g., '*.fp16.*')", default=[])
+    download_parser.add_argument("--repo-type", choices=["model", "dataset", "space"], default="model",help="Type of repository to download from")
+    download_parser.add_argument("--revision", help="Specific revision (branch, tag, commit) to download from")
+    download_parser.add_argument("--cache-dir", help="Cache directory for Hugging Face CLI")
+    download_parser.add_argument("--local-dir", help="Target directory for downloaded files")
+    download_parser.add_argument("--force-download", action="store_true", help="Force re-download of all files")
+    download_parser.add_argument("--resume-download", action="store_true", help="Resume partially downloaded files")
+    download_parser.add_argument("--token", help="Hugging Face token to authenticate download")
+    download_parser.add_argument("--quiet", action="store_true", help="Suppress progress output")
+    download_parser.add_argument("--max-workers", type=int, help="Max parallel download threads")
 
     # List command
     list_parser = subparsers.add_parser("list", help="List downloaded models")
@@ -159,94 +204,42 @@ def main():
     args = parser.parse_args()
     # Login
     if args.command == 'login':
-        token = args.token or getpass.getpass("Enter your Hugging Face Access Token (leave blank to cancel): ").strip()
-        if not token:
-            console.print("[yellow]Login cancelled.[/yellow]")
-            return
-        try:
-            subprocess.run(['huggingface-cli','login','--token',token,'--add-to-git-credential'], check=True)
-        except FileNotFoundError:
-            console.print("[red]Install HF CLI: pip install 'huggingface_hub[cli]'[/red]")
-            sys.exit(1)
-        except subprocess.CalledProcessError as e:
-            console.print(f"[red]Login failed (exit {e.returncode}).[/red]")
-            sys.exit(1)
-        # save to config and .env
-        try:
-            cfg = os.path.join(os.path.dirname(get_models_dir()), 'config')
-            os.makedirs(cfg,exist_ok=True)
-            tf = os.path.join(cfg,'hf_token')
-            with open(tf,'w') as f: f.write(token)
-            os.chmod(tf,0o600)
-        except:
-            pass
-        ef = os.path.join(os.getcwd(),'.env')
-        try:
-            lines = []
-            if os.path.exists(ef):
-                with open(ef) as f: lines=[l for l in f if not l.startswith('HF_TOKEN=')]
-            lines.append(f"HF_TOKEN={token}\n")
-            with open(ef,'w') as f: f.writelines(lines)
-        except:
-            pass
-        os.environ['HF_TOKEN']=token
-        console.print("[yellow]Token saved to .env file and config directory.[/yellow]")
-        console.print("[green]Login successful.[/green]")
+        login_command(args.token)
         return
 
     # Download with pre-check
     if args.command == 'download':
-        console.print(f"[bold]Downloading {args.repo_id}...[/bold]")
-
-        # check if the token is provided or in the environment
-        token = args.token or os.environ.get('HF_TOKEN')
-
-        # check if the token is in the .env file
-        if not token:
-            env_path = os.path.join(os.getcwd(), '.env')
-            if os.path.exists(env_path):
-                with open(env_path) as ef:
-                    for line in ef:
-                        if line.startswith('HF_TOKEN='):
-                            token = line.strip().split('=', 1)[1]
-                            break
-        if not token:
-            console.print("[red]No HF_TOKEN found. Please run `pipelm login` first.[/red]")
-            sys.exit(1)
-        # Pre-check access
-        try:
-            from huggingface_hub import HfApi
-            api = HfApi()
-            api.model_info(args.repo_id, token=token)
-        except Exception as e:
-            console.print(f"[red]Access check failed for '{args.repo_id}': {e}. Ensure you have access and are authenticated (run `pipelm login`).[/red]")
-            sys.exit(1)
-        # Build and run download command
-        cmd = ['huggingface-cli', 'download', args.repo_id]
-        if args.filenames: cmd += args.filenames
-        for pat in args.include: cmd += ['--include', pat]
-        for pat in args.exclude: cmd += ['--exclude', pat]
-        cmd += ['--repo-type', args.repo_type]
-        if args.revision: cmd += ['--revision', args.revision]
-        if args.cache_dir: cmd += ['--cache-dir', args.cache_dir]
         dest = args.local_dir or os.path.join(get_models_dir(), sanitize_model_name(args.repo_id))
-        cmd += ['--local-dir', dest]
-        if args.force_download: cmd.append('--force-download')
-        if args.resume_download: cmd.append('--resume-download')
-        cmd += ['--token', token]
-        if args.quiet: cmd.append('--quiet')
-        if args.max_workers: cmd += ['--max-workers', str(args.max_workers)]
-        try:
-            subprocess.run(cmd, check=True)
-        except FileNotFoundError:
-            console.print("[red]Install HF CLI: pip install 'huggingface_hub[cli]'[/red]")
-            sys.exit(1)
-        except subprocess.CalledProcessError as e:
-            console.print(f"[red]Download failed (exit {e.returncode}); run `pipelm login` if needed or check repo ID.[/red]")
-            sys.exit(1)
-        console.print("[green]Download successful.[/green]")
+        # Build proxies dict
+
+        dest = args.local_dir or os.path.join(
+            get_models_dir(), sanitize_model_name(args.repo_id)
+        )
+
+        if os.path.exists(dest):
+            model_dir = dest
+            console.print(f"[green]Model found at {model_dir}[/green]")
+            return
+        token = args.token or os.environ.get("HF_TOKEN") or get_huggingface_token()
+
+        path = ensure_model_available(
+            repo_id=args.repo_id,
+            cache_dir=args.cache_dir,
+            local_dir=dest,
+            repo_type=args.repo_type,
+            allow_patterns=args.include,
+            ignore_patterns=args.exclude,
+            force_download=args.force_download,
+            resume_download=not args.resume_download,
+            token=token,
+            user_agent="PipeLM",
+        )
+        if path:
+            console.print(f"[bold green]Model ready at:[/bold green] {path}")
+        else:
+            console.print(f"[bold red]Failed to download '{args.repo_id}'[/bold red]")
         return
-    
+
         # Handle 'list' command
     if args.command == "list":
         list_models()
@@ -273,8 +266,11 @@ def main():
         console.print(f"[bold]Using local model: {model_dir}[/bold]")
     else:
         console.print(f"[bold]Ensuring model '{args.model}' is available...[/bold]")
-        model_dir = ensure_model_available(args.model)
-        if not model_dir:
+        dest = os.path.join(get_models_dir(), sanitize_model_name(args.model))
+        if os.path.exists(dest):
+            model_dir = dest
+            console.print(f"[green]Model found at {model_dir}[/green]")
+        if not dest:
             console.print(f"[red]Failed to find or download model: {args.model}[/red]")
             sys.exit(1)
 
@@ -315,11 +311,13 @@ def main():
     try:
         wait_for_server(server_process_global, args.port)
         if args.command == "server":
+            print_banner()
             console.print("[yellow]Server mode: Running indefinitely. Press Ctrl+C to stop.[/yellow]")
             while server_process_global.poll() is None:
                 time.sleep(1)
             console.print("[red]Server process ended unexpectedly.[/red]")
         elif args.command == "chat":
+            print_banner()
             enable_streaming = not args.no_stream
             interactive_chat(base_url=base_url, streaming=enable_streaming)
     except KeyboardInterrupt:

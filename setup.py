@@ -33,7 +33,8 @@ setup(
         "python-dotenv>=1.0.0",
         "accelerate>=0.20.0",
         "sentencepiece>=0.1.99",
-        "bitsandbytes>=0.40.0"
+        "bitsandbytes>=0.40.0",
+        "pillow>=11.2.1"
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",

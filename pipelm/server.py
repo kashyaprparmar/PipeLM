@@ -19,6 +19,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForVision2Seq
 from transformers.image_utils import load_image
+import logging
 
 console = Console()
 
@@ -72,14 +73,14 @@ def format_conversation(messages: List[Message]) -> str:
 # Lifespan function for model loading/unloading
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    console.print("[cyan]Lifespan event: Startup sequence starting...[/cyan]")
+    logging.info("[cyan]Lifespan event: Startup sequence starting...[/cyan]")
     # Get model directory from environment variable
     model_dir = os.environ.get("MODEL_DIR")
     model_type = os.environ.get("MODEL_TYPE", "text2text")
     app.state.model_type = model_type
 
     if not model_dir or not os.path.isdir(model_dir):
-        console.print(f"[red]Error: Invalid model directory specified in MODEL_DIR: {model_dir}[/red]")
+        logging.info(f"[red]Error: Invalid model directory specified in MODEL_DIR: {model_dir}[/red]")
         raise RuntimeError(f"Invalid model directory: {model_dir}")
     app.state.model_dir = model_dir
 
@@ -87,7 +88,7 @@ async def lifespan(app: FastAPI):
         start_load_time = time.time()
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         if model_type == "image2text":
-            console.print(f"[cyan]Loading image-to-text model from {model_dir}...[/cyan]")
+            logging.info(f"[cyan]Loading image-to-text model from {model_dir}...[/cyan]")
             processor = AutoProcessor.from_pretrained(model_dir)
             vision_model = AutoModelForVision2Seq.from_pretrained(
                 model_dir,
@@ -98,12 +99,12 @@ async def lifespan(app: FastAPI):
             ).to(DEVICE)
 
             load_time = time.time() - start_load_time
-            console.print(f"[green]Model loaded successfully in {load_time:.2f} seconds![/green]")
+            logging.info(f"[green]Model loaded successfully in {load_time:.2f} seconds![/green]")
             app.state.processor   = processor
             app.state.model = vision_model
             app.state.start_time = time.time()
         elif model_type == "text2text":
-            console.print(f"[cyan]Loading text generation model from {model_dir}...[/cyan]")
+            logging.info(f"[cyan]Loading text generation model from {model_dir}...[/cyan]")
             try:
                 tokenizer = AutoTokenizer.from_pretrained(model_dir)
                 text_model = AutoModelForCausalLM.from_pretrained(
@@ -117,18 +118,18 @@ async def lifespan(app: FastAPI):
                 sys.exit(1)
             text_model.eval()
             load_time = time.time() - start_load_time
-            console.print(f"[green]Model loaded successfully in {load_time:.2f} seconds![/green]")
+            logging.info(f"[green]Model loaded successfully in {load_time:.2f} seconds![/green]")
 
             app.state.tokenizer = tokenizer
             app.state.model = text_model
             app.state.start_time = time.time()
     except Exception as e:
-        console.print(f"[bold red]Error loading model: {e}[/bold red]")
+        logging.info(f"[bold red]Error loading model: {e}[/bold red]")
         raise RuntimeError(f"Failed to load model: {e}") from e
 
     yield # Application runs after yield
 
-    console.print("[cyan]Lifespan event: Shutdown sequence starting...[/cyan]")
+    logging.info("[cyan]Lifespan event: Shutdown sequence starting...[/cyan]")
     # ... (cleanup logic remains the same) ...
     if hasattr(app.state, 'model'):
         del app.state.model
@@ -138,7 +139,7 @@ async def lifespan(app: FastAPI):
         del app.state.processor
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    console.print("[green]Resources cleaned up. Server shutting down.[/green]")
+    logging.info("[green]Resources cleaned up. Server shutting down.[/green]")
 
 
 # --- Create the FastAPI application ---
@@ -176,14 +177,14 @@ async def generate(request: Request, gen_request: GenerationRequest = Body(...))
         device = next(model.parameters()).device
         # load image from URL or local file
         try:
-            console.print(f"[cyan]Loading image from: {gen_request.image}[/cyan]")
+            logging.info(f"[cyan]Loading image from: {gen_request.image}[/cyan]")
             if gen_request.image.startswith("http"):
                 image_obj = load_image(gen_request.image)
             else:
                 image_obj = Image.open(gen_request.image).convert("RGB")
-            console.print("[green]Image loaded successfully.[/green]")
+            logging.info("[green]Image loaded successfully.[/green]")
         except Exception as e:
-            console.print(f"[red]Failed to load image: {e}[/red]")
+            logging.info(f"[red]Failed to load image: {e}[/red]")
             raise HTTPException(status_code=400, detail=f"Failed to load image: {e}")
 
         processor = app_state.processor
@@ -192,33 +193,33 @@ async def generate(request: Request, gen_request: GenerationRequest = Body(...))
         try:
             # Convert Pydantic models back to dicts for the processor if necessary
             messages_as_dicts = [msg.model_dump() for msg in gen_request.messages]
-            console.print(f"[cyan]Applying chat template with messages: {messages_as_dicts}[/cyan]")
+            logging.info(f"[cyan]Applying chat template with messages: {messages_as_dicts}[/cyan]")
             prompt = processor.apply_chat_template(messages_as_dicts, add_generation_prompt=True)
-            console.print(f"[cyan]Generated prompt for processor: {prompt}[/cyan]") # Be cautious logging prompts
+            logging.info(f"[cyan]Generated prompt for processor: {prompt}[/cyan]") # Be cautious logging prompts
 
             inputs = processor(text=prompt, images=image_obj, return_tensors="pt") # Pass single image if processor expects one
             inputs = {k: v.to(device) for k, v in inputs.items()}
-            console.print("[cyan]Prepared inputs for the model.[/cyan]")
+            logging.info("[cyan]Prepared inputs for the model.[/cyan]")
         except Exception as e:
-             console.print(f"[red]Error during processor application: {e}[/red]")
+             logging.info(f"[red]Error during processor application: {e}[/red]")
              raise HTTPException(status_code=500, detail=f"Failed during text/image processing: {e}")
 
         try:
             with torch.no_grad():
-                console.print("[cyan]Generating text from image...[/cyan]")
+                logging.info("[cyan]Generating text from image...[/cyan]")
                 generated_ids = model.generate(
                     **inputs,
                     max_new_tokens=gen_request.max_tokens
                 )
-            console.print("[green]Generation complete.[/green]")
+            logging.info("[green]Generation complete.[/green]")
             generated_text = processor.decode(generated_ids[0], skip_special_tokens=True)
 
             final_text = generated_text.strip()
 
-            console.print(f"[green]Generated Text: {final_text}[/green]")
+            logging.info(f"[green]Generated Text: {final_text}[/green]")
             return {"generated_text": final_text}
         except Exception as e:
-            console.print(f"[red]Error during model generation or decoding: {e}[/red]")
+            logging.info(f"[red]Error during model generation or decoding: {e}[/red]")
             raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
     elif app_state.model_type == "text2text":
@@ -241,7 +242,7 @@ async def generate(request: Request, gen_request: GenerationRequest = Body(...))
             }
             # Add warning if pad token had to be defaulted
             if tokenizer.pad_token_id is None:
-                 console.print("[yellow]Warning: tokenizer.pad_token_id was None, using eos_token_id.[/yellow]")
+                 logging.info("[yellow]Warning: tokenizer.pad_token_id was None, using eos_token_id.[/yellow]")
 
 
             if gen_request.stream:
@@ -260,7 +261,7 @@ async def generate(request: Request, gen_request: GenerationRequest = Body(...))
                         for token in streamer:
                             yield token
                     except Exception as e:
-                        console.print(f"[red]Error during streaming generation: {e}[/red]")
+                        logging.info(f"[red]Error during streaming generation: {e}[/red]")
                         yield f" Error: Generation failed during streaming. {str(e)}"
                     finally:
                         if thread.is_alive():
@@ -281,7 +282,7 @@ async def generate(request: Request, gen_request: GenerationRequest = Body(...))
                 return {"generated_text": generated_text.strip()}
 
         except Exception as e:
-            console.print_exception()
+            logging.info_exception()
             raise HTTPException(status_code=500, detail=f"Text generation failed: {str(e)}")
     else:
          # Should not happen if model_type is correctly set, but good practice
@@ -291,7 +292,7 @@ async def generate(request: Request, gen_request: GenerationRequest = Body(...))
 # Server Launch
 def launch_server(model_dir: str, port: int = 8080, gpu: bool = False, gpu_layers: int = 0, quantize: str = None, model_type: str = "text2text") -> subprocess.Popen:
     # ... (launch_server logic remains the same) ...
-    console.print("[bold yellow]Starting FastAPI server...[/bold yellow]")
+    logging.info("[bold yellow]Starting FastAPI server...[/bold yellow]")
     env = os.environ.copy()
     env.update({
         "PORT": str(port),
@@ -311,20 +312,20 @@ def launch_server(model_dir: str, port: int = 8080, gpu: bool = False, gpu_layer
         env["USE_GPU"] = "0"
     if quantize:
         env["QUANTIZE"] = quantize
-        console.print("[yellow]Warning: Quantization parameter set but not explicitly handled during model load in this script.[/yellow]")
+        logging.info("[yellow]Warning: Quantization parameter set but not explicitly handled during model load in this script.[/yellow]")
     try:
         import uvicorn
         uvicorn_path = os.path.dirname(uvicorn.__file__)
-        console.print(f"[dim]Using uvicorn from: {uvicorn_path}[/dim]")
+        logging.info(f"[dim]Using uvicorn from: {uvicorn_path}[/dim]")
     except ImportError:
-        console.print("[red]Error: uvicorn package not found. Please install it with 'pip install uvicorn'.[/red]")
+        logging.info("[red]Error: uvicorn package not found. Please install it with 'pip install uvicorn'.[/red]")
         sys.exit(1)
 
     server_module_name = __name__
     if server_module_name == '__main__':
         server_module_name = 'server' # Adjust if your file structure differs
     app_instance_string = f"{server_module_name}:app"
-    console.print(f"[dim]Server module: {server_module_name}, App instance: app[/dim]")
+    logging.info(f"[dim]Server module: {server_module_name}, App instance: app[/dim]")
 
     try:
         cmd = [sys.executable, "-m", "uvicorn", app_instance_string, "--host", "0.0.0.0", "--port", str(port), "--log-level", "info"]
@@ -341,13 +342,13 @@ def launch_server(model_dir: str, port: int = 8080, gpu: bool = False, gpu_layer
         if proc.poll() is not None:
             stdout = proc.stdout.read() if proc.stdout else "No stdout"
             stderr = proc.stderr.read() if proc.stderr else "No stderr"
-            console.print(f"[red]Server failed to start. Exit code: {proc.poll()}[/red]")
-            console.print(f"[red]Stderr:\n{stderr}[/red]")
-            console.print(f"[yellow]Stdout:\n{stdout}[/yellow]")
+            logging.info(f"[red]Server failed to start. Exit code: {proc.poll()}[/red]")
+            logging.info(f"[red]Stderr:\n{stderr}[/red]")
+            logging.info(f"[yellow]Stdout:\n{stdout}[/yellow]")
             sys.exit(1)
 
     except Exception as e:
-        console.print(f"[red]Failed to start server process: {e}[/red]")
+        logging.info(f"[red]Failed to start server process: {e}[/red]")
         sys.exit(1)
 
     return proc
@@ -357,7 +358,7 @@ def wait_for_server(server_proc: subprocess.Popen, port: int = 8080, timeout: in
     # ... (wait_for_server logic remains the same) ...
     base_url = f"http://localhost:{port}"
     healthy = False
-    console.print(f"[yellow]Waiting for server on port {port} to be ready (timeout: {timeout}s)...[/yellow]")
+    logging.info(f"[yellow]Waiting for server on port {port} to be ready (timeout: {timeout}s)...[/yellow]")
     progress_bar_format = "[progress.description]{task.description} [progress.percentage]{task.percentage:>3.0f}% | [progress.elapsed] elapsed"
 
     with Progress(
@@ -374,9 +375,9 @@ def wait_for_server(server_proc: subprocess.Popen, port: int = 8080, timeout: in
             if server_proc.poll() is not None:
                 stdout = server_proc.stdout.read() if server_proc.stdout else "No stdout"
                 stderr = server_proc.stderr.read() if server_proc.stderr else "No stderr"
-                console.print(f"\n[red]Server process terminated unexpectedly (Exit Code: {server_proc.poll()}).[/red]")
-                console.print(f"[red]Stderr:\n{stderr}[/red]")
-                console.print(f"[yellow]Stdout:\n{stdout}[/yellow]")
+                logging.info(f"\n[red]Server process terminated unexpectedly (Exit Code: {server_proc.poll()}).[/red]")
+                logging.info(f"[red]Stderr:\n{stderr}[/red]")
+                logging.info(f"[yellow]Stdout:\n{stdout}[/yellow]")
                 sys.exit(1)
 
             try:
@@ -395,7 +396,7 @@ def wait_for_server(server_proc: subprocess.Popen, port: int = 8080, timeout: in
                     progress.update(task, description=f"[yellow]Server status: {r.status_code}")
 
             except requests.exceptions.ConnectionError:
-                progress.update(task, description="[cyan]Server not responding yet...")
+                progress.update(task, description="[cyan]Starting the server ...")
             except requests.exceptions.Timeout:
                 progress.update(task, description="[yellow]Health check timed out, retrying...")
             except requests.exceptions.RequestException as e:
@@ -404,7 +405,7 @@ def wait_for_server(server_proc: subprocess.Popen, port: int = 8080, timeout: in
             time.sleep(1)
 
     if not healthy:
-        console.print("\n[red]Server did not become healthy within the timeout period.[/red]")
+        logging.info("\n[red]Server did not become healthy within the timeout period.[/red]")
         # ... (cleanup on timeout remains the same) ...
         try:
             if os.name != "nt":
@@ -413,16 +414,16 @@ def wait_for_server(server_proc: subprocess.Popen, port: int = 8080, timeout: in
                 server_proc.terminate()
             server_proc.wait(timeout=5)
         except Exception as term_err:
-            console.print(f"[yellow]Could not terminate server process cleanly: {term_err}[/yellow]")
+            logging.info(f"[yellow]Could not terminate server process cleanly: {term_err}[/yellow]")
             server_proc.kill()
         stdout = server_proc.stdout.read() if server_proc.stdout else "No stdout"
         stderr = server_proc.stderr.read() if server_proc.stderr else "No stderr"
-        console.print(f"[red]Final Server Stderr:\n{stderr}[/red]")
-        console.print(f"[yellow]Final Server Stdout:\n{stdout}[/yellow]")
+        logging.info(f"[red]Final Server Stderr:\n{stderr}[/red]")
+        logging.info(f"[yellow]Final Server Stdout:\n{stdout}[/yellow]")
         sys.exit(1)
 
 
-    console.print(f"\n[bold green]Server is up and running on port {port}![/bold green]")
-    console.print(f"[dim]API endpoints:[/dim]")
-    console.print(f"[dim] - Health check: GET http://localhost:{port}/health[/dim]")
-    console.print(f"[dim] - Generation: POST http://localhost:{port}/generate[/dim]")
+    logging.info(f"\n[bold green]Server is up and running on port {port}![/bold green]")
+    logging.info(f"[dim]API endpoints:[/dim]")
+    logging.info(f"[dim] - Health check: GET http://localhost:{port}/health[/dim]")
+    logging.info(f"[dim] - Generation: POST http://localhost:{port}/generate[/dim]")

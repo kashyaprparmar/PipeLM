@@ -5,18 +5,16 @@ import sys
 import time
 import shutil
 import glob
+from typing import List, Union
 from typing import Dict, Any, Optional, Type 
 from rich.console import Console
 from rich.table import Table
 from rich.progress import (
     Progress,
-    BarColumn,
-    DownloadColumn,
-    TextColumn,
-    TransferSpeedColumn,
-    TimeRemainingColumn,
     TaskID
 )
+import logging
+
 try:
     from tqdm.auto import tqdm
     _tqdm_available = True
@@ -26,7 +24,7 @@ except ImportError:
 try:
     from huggingface_hub import snapshot_download, list_repo_files
     from huggingface_hub.utils import GatedRepoError
-    from huggingface_hub.errors import RepositoryNotFoundError, BadRequestError, LocalEntryNotFoundError
+    from huggingface_hub.errors import RepositoryNotFoundError, BadRequestError, LocalEntryNotFoundError,EntryNotFoundError
     _hf_hub_available = True
 except ImportError:
     _hf_hub_available = False
@@ -101,28 +99,6 @@ def is_model_complete(dir_path: str) -> bool:
     # This internal check remains the same logic as before
     if not os.path.isdir(dir_path):
         return False
-
-    required_files = {"config.json", "tokenizer.json"} # Core requirements
-    optional_files = {"generation_config.json", "tokenizer_config.json"} # Good to have
-
-    try:
-        files_in_dir = set(os.listdir(dir_path))
-    except FileNotFoundError:
-        return False # Directory doesn't exist
-
-    if not required_files.issubset(files_in_dir):
-        return False
-
-    weight_patterns = [
-        "model.safetensors", "model-*.safetensors",
-        "pytorch_model.bin", "pytorch_model-*.bin"
-    ]
-    # Use os.path.join for cross-platform compatibility in glob
-    has_model_weights = any(glob.glob(os.path.join(dir_path, pattern)) for pattern in weight_patterns)
-
-    if not has_model_weights:
-         return False
-
     return True
 
 def cleanup_incomplete_downloads(model_dir_base: str) -> None:
@@ -135,134 +111,6 @@ def cleanup_incomplete_downloads(model_dir_base: str) -> None:
                 shutil.rmtree(incomplete_dir)
             except OSError as e:
                 console.print(f"[red]Error removing directory {incomplete_dir}: {e}[/red]")
-
-def ensure_model_available(model_name: str) -> Optional[str]:
-    """
-    Ensure the specified model is downloaded locally using huggingface_hub.
-    Shows improved progress using rich.progress.
-    Returns the full path to the model directory, or None on failure.
-    """
-    # --- Dependency checks remain the same ---
-    if not _tqdm_available:
-        console.print("[red]Error: `tqdm` package not found. Please install it (`pip install tqdm`).[/red]")
-        return None
-    if not _hf_hub_available:
-        console.print("[red]Error: `huggingface-hub` package not found. Please install it (`pip install huggingface-hub`).[/red]")
-        return None
-
-    # --- Variable setup remains the same ---
-    token = get_huggingface_token()
-    base_model_dir = get_models_dir()
-    sanitized_name = sanitize_model_name(model_name)
-    model_dir = os.path.join(base_model_dir, sanitized_name)
-
-    # --- Model check/backup logic remains the same ---
-    if is_model_complete(model_dir):
-        console.print(f"[green]Model '{model_name}' is already present and appears complete in '{model_dir}'.[/green]")
-        return model_dir
-    if os.path.isdir(model_dir):
-        console.print(f"[yellow]Model directory '{model_dir}' exists but appears incomplete or corrupted.[/yellow]")
-        cleanup_incomplete_downloads(model_dir)
-        backup_dir = f"{model_dir}_incomplete_{int(time.time())}"
-        try:
-            console.print(f"[dim]Backing up existing directory to {backup_dir}[/dim]")
-            shutil.move(model_dir, backup_dir)
-            os.makedirs(model_dir)
-        except Exception as e:
-             console.print(f"[red]Error backing up existing directory: {e}. Attempting download anyway.[/red]")
-             if not os.path.exists(model_dir):
-                 os.makedirs(model_dir, exist_ok=True)
-    else:
-        os.makedirs(base_model_dir, exist_ok=True)
-        cleanup_incomplete_downloads(model_dir)
-        os.makedirs(model_dir, exist_ok=True)
-
-    progress = Progress(
-        TextColumn("[progress.description]{task.description}", justify="right"),
-        BarColumn(bar_width=None),
-        "[progress.percentage]{task.percentage:>3.1f}%", "•",
-        DownloadColumn(), "•",
-        TransferSpeedColumn(), "•",
-        TimeRemainingColumn(),
-        console=console,
-        transient=False
-    )
-
-    console.print(f"[bold yellow]Downloading model '{model_name}' from Hugging Face...[/bold yellow]")
-    download_successful = False
-    try:
-        RichTqdm._current_progress = progress
-        with progress: # Start the Rich Progress display
-             snapshot_download(
-                repo_id=model_name,
-                local_dir=model_dir,
-                # local_dir_use_symlinks=False,
-                token=token,
-                allow_patterns=["*.json", "*.safetensors", "*.bin", "*.txt", "*.py", "*.md", "*.model"],
-                ignore_patterns=["*.h5", "*.ot", "*.msgpack", "*.onnx", "*.onnx_data", "*.ckpt", "*.pt", ".gitattributes", "*.git/*"],
-                force_download=True,
-                max_workers=8,
-                tqdm_class=RichTqdm,
-                user_agent=f"PipeLM/{'0.1.0'}",
-             )
-             download_successful = True
-
-    except (GatedRepoError, RepositoryNotFoundError, BadRequestError, LocalEntryNotFoundError) as e:
-         # Improved error handling for repository not found or access issues
-         if isinstance(e, RepositoryNotFoundError) or isinstance(e, BadRequestError):
-             console.print(f"[red]Error: Repository '{model_name}' not found. Please check the model name.[/red]")
-         elif isinstance(e, GatedRepoError):
-             console.print(f"[red]Error: Repository '{model_name}' exists but requires authentication.[/red]")
-             console.print("[yellow]Use `huggingface-cli login` to authenticate and try again.[/yellow]")
-         elif isinstance(e, LocalEntryNotFoundError):
-             console.print(f"[red]Error: Could not access model files for '{model_name}'.[/red]")
-             console.print("[yellow]Check your internet connection and try again.[/yellow]")
-         else:
-             console.print(f"[red]Error accessing model repository '{model_name}': {e}[/red]")
-         
-         # Clean up the failed download directory
-         if os.path.isdir(model_dir):
-             try:
-                 shutil.rmtree(model_dir)
-             except OSError:
-                 pass
-         return None
-    except Exception as e:
-        import traceback
-        console.print(f"[red]Model download failed unexpectedly: {e}[/red]")
-        console.print("[dim]Full error traceback:[/dim]")
-        traceback.print_exc()
-        
-        # Clean up the failed download directory
-        if os.path.isdir(model_dir) and not is_model_complete(model_dir):
-            try:
-                shutil.rmtree(model_dir)
-            except OSError:
-                pass  # Ignore errors during cleanup
-        return None
-    finally:
-        RichTqdm._current_progress = None
-
-    if download_successful and is_model_complete(model_dir):
-        console.print(f"[bold green]Model '{model_name}' downloaded successfully to {model_dir}.[/bold green]")
-        return model_dir
-    else:
-        if download_successful:
-            console.print(f"[red]Download finished, but model directory appears incomplete or corrupted.[/red]")
-            console.print(f"[yellow]Location: {model_dir}[/yellow]")
-        else:
-            console.print(f"[red]Download failed for model '{model_name}'.[/red]")
-        
-        # Only clean up if directory exists and is incomplete
-        if os.path.isdir(model_dir) and not is_model_complete(model_dir):
-            try:
-                shutil.rmtree(model_dir)
-                console.print(f"[dim]Removed incomplete model directory.[/dim]")
-            except OSError as e:
-                console.print(f"[yellow]Could not remove incomplete model directory: {e}[/yellow]")
-        
-        return None
-
 
 def list_models() -> None:
     """List all downloaded models, checking their status and size."""
@@ -328,3 +176,83 @@ def list_models() -> None:
 
     console.print(table)
     console.print(f"Total size of listed models: [bold blue]{format_size(total_size_all)}[/bold blue]")
+
+def ensure_model_available(
+    repo_id: str,
+    cache_dir: Optional[str] = None,
+    local_dir: Optional[str] = None,
+    repo_type: str = "model",
+    allow_patterns: Optional[List[str]] = None,
+    ignore_patterns: Optional[List[str]] = None,
+    force_download: bool = False,
+    resume_download: bool = True,
+    token: Optional[str] = None,
+    user_agent: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Download a Hugging Face repository snapshot into `local_dir`.
+    Returns the path if successful, or None on failure/interruption.
+    """
+    token = token or get_huggingface_token()
+    base_dir = get_models_dir()
+    folder_name = sanitize_model_name(repo_id)
+    dest = local_dir or os.path.join(base_dir, folder_name)
+
+    # Clean up any previous incomplete downloads
+    cleanup_incomplete_downloads(base_dir)
+
+    # Handle existing dest directory
+    if os.path.exists(repo_id):
+        if force_download:
+            backup = f"{repo_id}_backup_{int(time.time())}"
+            shutil.move(repo_id, backup)
+            os.makedirs(repo_id, exist_ok=True)
+        elif resume_download:
+            logging.info(f"Resuming download for '{repo_id}' into '{repo_id}'")
+        else:
+            print(f"Directory '{repo_id}' already exists; skipping download.")
+            return repo_id
+    else:
+        os.makedirs(dest, exist_ok=True)
+
+    try:
+        allowed_patterns_list = None
+        ignore_patterns_list = None
+        if allow_patterns:
+            allowed_patterns_list = allow_patterns[0].strip("[]").split(",") if allow_patterns[0].strip("[]") else None
+        if ignore_patterns:
+            ignore_patterns_list = ignore_patterns[0].strip("[]").split(",") if ignore_patterns[0].strip("[]") else None
+        
+        snapshot_download(
+            repo_id=repo_id,
+            repo_type=repo_type,
+            cache_dir=cache_dir,
+            local_dir=dest,
+            allow_patterns=allowed_patterns_list,
+            ignore_patterns=ignore_patterns_list,
+            user_agent=user_agent,
+        )
+        console.print(f"[green]✔ Download complete: '{repo_id}' → '{dest}'[/green]")
+        return dest
+
+    except KeyboardInterrupt:
+        incomplete = f"{dest}_incomplete_{int(time.time())}"
+        shutil.move(dest, incomplete)
+        console.print(f"[red]Download interrupted; partial data moved to '{incomplete}[/red]")
+        return None
+
+    except (RepositoryNotFoundError, EntryNotFoundError, LocalEntryNotFoundError):
+        console.print(f"[red]Repository '{repo_id}' not found on Hugging Face.[/red]")
+        return None
+
+    except GatedRepoError:
+        console.print(f"[red]Repository '{repo_id}' is gated. Please authenticate with `pipelm login`.[/red]")
+        return None
+
+    except Exception as e:
+        console.print(f"[red]Download failed: {e}[/red]")
+        try:
+            shutil.rmtree(dest)
+        except Exception:
+            pass
+        return None

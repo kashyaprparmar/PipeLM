@@ -87,3 +87,6 @@ logs/
 # Model files directories
 **/models/**
 models/**
+/next.md
+next.md
+test.py
