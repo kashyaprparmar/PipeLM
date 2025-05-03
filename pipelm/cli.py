@@ -126,7 +126,7 @@ def main():
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run", required=True)
 
-    # Download command: wrap huggingface-cli download
+    # Download command: wrapper for Hugging Face Snapshot download
     download_parser = subparsers.add_parser("download", help="Download a model from Hugging Face via CLI wrapper")
     download_parser.add_argument("repo_id", help="Model name/path on Hugging Face (e.g., 'mistralai/Mistral-7B-v0.1')")
     download_parser.add_argument("filenames", nargs="*", help="Specific file names to download (e.g., config.json)", default=[])
