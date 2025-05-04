@@ -24,6 +24,9 @@ PipeLM simplifies interaction with AI models, allowing you to:
 - **Interactive CLI Chat**: Chat directly from your terminal.
 - **FastAPI Server**: REST APIs with health monitoring.
 - **Efficient Model Management**: Download and manage models easily.
+- **Support for different models**: text2text and image2text models are supported
+- **Easy Authentication**: Easily access HF models using only HF_TOKEN
+- **Client-Server Architecture**: Model deployed on server can be accessed by client
 - **Docker Support**: Containerize your models for better isolation.
 - **GPU Acceleration**: Automatically utilize available GPUs.
 - **Model Quantization**: Reduce memory usage (4-bit and 8-bit).
@@ -87,16 +90,23 @@ docker run -p 8080:8080 -v pipelm_data:/root/.pipelm -e HF_TOKEN=your_token -e M
 
 ## Usage
 
+
+### Login with HF_TOKEN
+```bash
+pipelm login
+# Enter your HF_TOKEN to terminal
+```
+
 ### Download a Huggingface Model
 ```bash
-pipelm download HuggingFaceTB/SmolLM2-1.7B-Instruct
+# Download a model with particular allowed patterns
+pipelm download HuggingFaceTB/SmolLM2-1.7B-Instruct --include ['*.json','*.safetensors']
 ```
 
 ### List all Downloaded Models
 ```bash
 pipelm list
 ```
-
 ### Interactive Chat 
 ```bash
 # (Streaming is ENABLED BY DEFAULT)
@@ -123,6 +133,30 @@ pipelm server /path/to/local/model --port 8080
 # With quantization
 pipelm server HuggingFaceTB/SmolLM2-1.7B-Instruct --quantize 8bit
 ```
+
+### Making Client Requests to model on Server
+```bash
+# Making client request on a text2text model
+pipelm client HuggingFaceTB/SmolLM2-1.7B-Instruct 
+  --prompt "Summarize the benefits of solar energy." 
+
+# Making client request on a text2text model with some model config
+pipelm client HuggingFaceTB/SmolLM2-1.7B-Instruct 
+  --prompt "Summarize the benefits of solar energy." 
+  --max-tokens 80   
+  --top-p 0.95   
+
+# Making client request on a image2text model with some model config
+pipelm client HuggingFaceTB/SmolVLM-500M-Instruct   
+  --port 8080   
+  --model-type image2text   
+  --image "/home/kashyap/Desktop/mywork/PipeLM/assets/logo.png"   
+  --prompt "Describe what you see."   
+  --max-tokens 80   
+  --top-p 0.95   
+  --no-stream
+```
+
 
 ### 🐳 Docker Compose
 ```bash
@@ -247,7 +281,7 @@ PipeLM/
 If you encounter issues downloading models:
 
 1. Check your Hugging Face token:
-   * Create or verify your token at https://huggingface.co/settings/tokens
+   * Create or verify your token at https://huggingface.co/settings/tokens (**MAKE SURE TO GENERATE A READ/WRITE HF ACCESS TOKEN**)
    * Set it in your environment as `export HF_TOKEN=your_token_here`
    * Or store it in `.env` file as `HF_TOKEN=your_token_here`
 2. Network issues:
