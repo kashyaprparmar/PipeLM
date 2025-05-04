@@ -14,6 +14,7 @@ from pipelm.downloader import ensure_model_available, list_models, is_model_comp
 from pipelm.server import launch_server, wait_for_server
 from pipelm.chat import interactive_chat, send_single_message
 from pipelm.utils import check_gpu_availability, check_health, get_models_dir, sanitize_model_name, get_huggingface_token
+from pipelm.client import call_generate, check_health
 
 console = Console()
 
@@ -277,26 +278,47 @@ def main():
     base_url = f"http://localhost:{getattr(args, 'port', 8080)}"
 
     if args.command == "client":
-        enable_streaming = not args.no_stream
-        try:
-            check_health(base_url)
-            response = send_single_message(
-                message=args.prompt,
-                base_url=base_url,
-                model_type=args.model_type or ("image2text" if args.image else "text2text"),
-                image=(args.image if args.model_type == "image2text" else ""),
-                stream=enable_streaming,
-                temperature=args.temperature,
-                max_tokens=args.max_tokens,
-                top_p=args.top_p,
-            )
-            console.print(f"\n[green]Final model output:[/green]\n{response}\n")
-        except Exception as e:
-            console.print("[red]Rewrite the command correctly: pipelm client model /path/to/model --image path/to/image --prompt 'prompt' --temperature 0.7 --max-tokens 100 --top-p 0.9[/red]")
-            console.print(f"[red]Error: {e}[/red]")
-            sys.exit(1)
-        return
+        # enable_streaming = not args.no_stream
+        # try:
+        #     check_health(base_url)
+        #     response = send_single_message(
+        #         message=args.prompt,
+        #         base_url=base_url,
+        #         model_type=args.model_type or ("image2text" if args.image else "text2text"),
+        #         image=(args.image if args.model_type == "image2text" else ""),
+        #         stream=enable_streaming,
+        #         temperature=args.temperature,
+        #         max_tokens=args.max_tokens,
+        #         top_p=args.top_p,
+        #     )
+        #     console.print(f"\n[green]Final model output:[/green]\n{response}\n")
+        # except Exception as e:
+        #     console.print("[red]Rewrite the command correctly: pipelm client model /path/to/model --image path/to/image --prompt 'prompt' --temperature 0.7 --max-tokens 100 --top-p 0.9[/red]")
+        #     console.print(f"[red]Error: {e}[/red]")
+        #     sys.exit(1)
+        # return
+        base_url = f"http://localhost:{getattr(args, 'port', 8080)}"
 
+        # base_url = args.port
+        stream = not args.no_stream
+
+        console.print(f"[yellow]Checking server health at {base_url}...[/yellow]")
+        check_health(base_url)
+
+        console.print(
+            f"[yellow]Sending prompt: '{args.prompt}' (streaming={stream})[/yellow]\n"
+        )
+        messages = [{"role": "user", "content": args.prompt}]
+        output = call_generate(
+            base_url=base_url,
+            messages=messages,
+            max_tokens=args.max_tokens,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            stream=stream,
+        )
+        console.print(f"\n[green]Final model output:[/green]\n{output}\n")
+        return
     # Launch server for 'server' and 'chat'
     console.print(f"[cyan]Launching backend server for model '{os.path.basename(model_dir)}' on port {args.port}...[/cyan]")
     server_process_global = launch_server(
