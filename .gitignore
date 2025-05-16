@@ -89,4 +89,4 @@ logs/
 models/**
 /next.md
 next.md
-test.py
+test*.py

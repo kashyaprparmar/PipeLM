@@ -329,7 +329,6 @@ def main():
         quantize=getattr(args, 'quantize', None),
         model_type=args.model_type
     )
-
     try:
         wait_for_server(server_process_global, args.port)
         if args.command == "server":

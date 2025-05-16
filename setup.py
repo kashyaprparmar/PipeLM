@@ -2,8 +2,8 @@ import os
 from setuptools import setup, find_packages
 
 # Read the requirements from requirements.txt
-with open('requirements.txt') as f:
-    requirements = f.read().splitlines()
+# with open('requirements.txt') as f:
+#     requirements = f.read().splitlines()
 
 # Read the README for the long description
 with open('README.md', 'r', encoding='utf-8') as f:
@@ -35,7 +35,7 @@ setup(
         "sentencepiece>=0.1.99",
         "bitsandbytes>=0.40.0",
         "pillow>=11.2.1",
-        "pyfiglet'>=1.0.2",
+        "pyfiglet>=1.0.2",
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",
